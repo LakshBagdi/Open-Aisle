@@ -16,8 +16,13 @@ const schema = z.object({
   PAYPAL_WEBHOOK_ID: z.string().default(""),
   PAYPAL_API_BASE: z.string().optional(),
 
-  // AI
+  // AI. AI_PROVIDER picks which key is used; AGENT_MODEL is that provider's model name.
+  AI_PROVIDER: z.enum(["anthropic", "google", "groq"]).default("anthropic"),
   ANTHROPIC_API_KEY: z.string().default(""),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().default(""),
+  GROQ_API_KEY: z.string().default(""),
+  // Optional: send Gemini/Groq calls through a proxy or a local stand-in.
+  AI_BASE_URL: z.string().default(""),
   AGENT_MODEL: z.string().default("claude-sonnet-5-5"),
   SMALL_MODEL: z.string().default("claude-haiku-5-5"),
 
@@ -40,6 +45,14 @@ let cached: Env | undefined;
 export function env(): Env {
   if (!cached) cached = schema.parse(process.env);
   return cached;
+}
+
+/** True when the chosen AI provider has a key, so AI features can switch on. */
+export function aiEnabled(): boolean {
+  const e = env();
+  if (e.AI_PROVIDER === "google") return Boolean(e.GOOGLE_GENERATIVE_AI_API_KEY);
+  if (e.AI_PROVIDER === "groq") return Boolean(e.GROQ_API_KEY);
+  return Boolean(e.ANTHROPIC_API_KEY);
 }
 
 /** Tests change process.env and then call this. */

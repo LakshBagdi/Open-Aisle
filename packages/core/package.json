@@ -32,10 +32,12 @@
     "demo:activity": "tsx scripts/demo-activity.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.82",
+    "@ai-sdk/anthropic": "^4.0.87",
+    "@ai-sdk/google": "^4.0.104",
+    "@ai-sdk/groq": "^4.0.69",
     "@channel3/sdk": "^4.3.0",
     "@paypal/paypal-server-sdk": "2.5.0",
-    "ai": "^7.0.143",
+    "ai": "^7.0.150",
     "axios": "1.20.0",
     "drizzle-orm": "0.45.4",
     "jose": "^6.2.12",

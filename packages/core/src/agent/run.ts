@@ -8,7 +8,9 @@
  * the app announces "Looking..." to screen readers meanwhile.
  */
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateText, isStepCount, type LanguageModel, type ModelMessage } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
+import { generateText, isStepCount, wrapLanguageModel, type LanguageModel, type LanguageModelMiddleware, type ModelMessage } from "ai";
 import { asc, desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { aiRuns, conversations, messages, users } from "../db/schema";
@@ -20,8 +22,40 @@ import { createTools, type AgentEvent } from "./tools";
 
 export class AgentUnavailableError extends Error {}
 
+/** Used when AGENT_MODEL still names a Claude model but another provider is chosen. */
+const PROVIDER_DEFAULT_MODEL = { google: "gemini-3.8-flash", groq: "llama-3.3-70b-versatile" } as const;
+
+/**
+ * Gemini 3 "thinks" before answering, and those thinking tokens count against
+ * maxOutputTokens. With our small caps (replies are meant to be short) the
+ * thinking can use the whole budget and the reply comes back empty. So: keep
+ * thinking low and give every call extra room on top of its reply budget.
+ */
+const geminiHeadroom: LanguageModelMiddleware = {
+  specificationVersion: "v4",
+  transformParams: async ({ params }) => ({
+    ...params,
+    maxOutputTokens: params.maxOutputTokens === undefined ? undefined : params.maxOutputTokens + 2048,
+    providerOptions: {
+      ...params.providerOptions,
+      google: { thinkingConfig: { thinkingLevel: "low" }, ...params.providerOptions?.google },
+    },
+  }),
+};
+
 export function defaultModel(): LanguageModel {
   const e = env();
+  const baseURL = e.AI_BASE_URL || undefined;
+  if (e.AI_PROVIDER === "google") {
+    if (!e.GOOGLE_GENERATIVE_AI_API_KEY) throw new AgentUnavailableError("GOOGLE_GENERATIVE_AI_API_KEY is not set, so the shopping agent can't think yet.");
+    const id = e.AGENT_MODEL.startsWith("claude") ? PROVIDER_DEFAULT_MODEL.google : e.AGENT_MODEL;
+    return wrapLanguageModel({ model: createGoogleGenerativeAI({ apiKey: e.GOOGLE_GENERATIVE_AI_API_KEY, baseURL })(id), middleware: geminiHeadroom });
+  }
+  if (e.AI_PROVIDER === "groq") {
+    if (!e.GROQ_API_KEY) throw new AgentUnavailableError("GROQ_API_KEY is not set, so the shopping agent can't think yet.");
+    const id = e.AGENT_MODEL.startsWith("claude") ? PROVIDER_DEFAULT_MODEL.groq : e.AGENT_MODEL;
+    return createGroq({ apiKey: e.GROQ_API_KEY, baseURL })(id);
+  }
   if (!e.ANTHROPIC_API_KEY) throw new AgentUnavailableError("ANTHROPIC_API_KEY is not set, so the shopping agent can't think yet.");
   return createAnthropic({ apiKey: e.ANTHROPIC_API_KEY })(e.AGENT_MODEL);
 }

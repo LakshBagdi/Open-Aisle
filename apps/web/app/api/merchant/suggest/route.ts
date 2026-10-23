@@ -1,7 +1,7 @@
 /** POST /api/merchant/suggest { barrierId } — an AI-drafted fix for the merchant to check. */
 import { defaultModel } from "@open-aisle/core/agent";
 import { draftFix } from "@open-aisle/core/barriers";
-import { env } from "@open-aisle/core";
+import { aiEnabled } from "@open-aisle/core";
 import { z } from "zod";
 import { fail, handleError, ok, sameOrigin } from "@/lib/http";
 
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   if (!sameOrigin(req)) return fail("Request blocked.", 403);
   try {
     const { barrierId } = z.object({ barrierId: z.string().uuid() }).parse(await req.json());
-    const model = env().ANTHROPIC_API_KEY ? defaultModel() : undefined;
+    const model = aiEnabled() ? defaultModel() : undefined;
     return ok({ draft: await draftFix(barrierId, model) });
   } catch (err) {
     return handleError(err);

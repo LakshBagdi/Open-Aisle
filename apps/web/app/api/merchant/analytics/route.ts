@@ -3,7 +3,7 @@
  * dashboard (orders, barriers, agent turns). No shopper is identifiable.
  */
 import { listStores } from "@open-aisle/core/catalog";
-import { env } from "@open-aisle/core";
+import { aiEnabled } from "@open-aisle/core";
 import { analyticsDataset } from "@open-aisle/core/merchant";
 import { handleError, ok } from "@/lib/http";
 
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     return ok({
       stores: stores.map((s) => ({ id: s.id, name: s.name })),
       data: await analyticsDataset(ids),
-      ai: Boolean(env().ANTHROPIC_API_KEY),
+      ai: aiEnabled(),
     });
   } catch (err) {
     return handleError(err);

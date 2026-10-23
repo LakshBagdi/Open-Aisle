@@ -6,6 +6,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { describeAiError } from "@open-aisle/core/agent";
 
 export function ok<T extends object>(data: T, init?: ResponseInit) {
   return NextResponse.json({ ok: true, ...data }, init);
@@ -21,6 +22,8 @@ export function handleError(err: unknown) {
   const name = err instanceof Error ? err.name : "";
   if (["CartError", "OrderError", "ConfirmationError"].includes(name)) return fail((err as Error).message, 409);
   if (name === "AgentUnavailableError") return fail((err as Error).message, 503);
+  const ai = describeAiError(err);
+  if (ai) return fail(ai, 503);
   console.error(err);
   return fail("Something went wrong on our side. Nothing was charged. Please try again.", 500);
 }

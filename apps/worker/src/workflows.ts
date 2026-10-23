@@ -15,7 +15,7 @@
  */
 import "dotenv/config";
 import { task, type TaskContext } from "@renderinc/sdk/workflows";
-import { env } from "@open-aisle/core";
+import { aiEnabled } from "@open-aisle/core";
 import { defaultModel } from "@open-aisle/core/agent";
 import { draftFix, listBarriers } from "@open-aisle/core/barriers";
 import { captureDueOrders, captureOrder } from "@open-aisle/core/orders";
@@ -40,7 +40,7 @@ export const sweepDueOrders = task({ name: "sweepDueOrders", timeoutSeconds: 300
 });
 
 export const draftBarrierFixes = task({ name: "draftBarrierFixes", timeoutSeconds: 900 }, async function draftBarrierFixes(_ctx: TaskContext, storeId: string) {
-  const model = env().ANTHROPIC_API_KEY ? defaultModel() : undefined;
+  const model = aiEnabled() ? defaultModel() : undefined;
   const open = (await listBarriers(storeId)).filter((b) => b.status === "open" && !b.suggestedFix);
   for (const b of open) await draftFix(b.id, model);
   return { drafted: open.length };
