@@ -1,0 +1,503 @@
+openapi: 3.0.3
+info:
+  title: Open Aisle Merchant API
+  version: 1.0.0
+  description: |
+    Open Aisle is an AI shopping companion for blind and low-vision shoppers,
+    people who can't use a mouse, and people shopping outside their first language.
+    This API lets a store's own systems work with Open Aisle orders and fix the
+    accessibility gaps ("barriers") that shoppers run into.
+
+    - **Orders** are paid with PayPal. A new order is a PayPal *authorization hold*
+      (`held`); it becomes `captured` when the shopper's undo window ends, or
+      `voided` if they cancel. Shipping adds tracking to the PayPal order;
+      refunds go through PayPal and the shopper is told out loud.
+    - **Barriers** are missing facts (photo descriptions, size charts, return
+      policies, materials). Each one counts how many shoppers hit it. Fixes are
+      written straight into the catalog.
+
+    Every response is JSON with `ok: true` or `ok: false`. Errors carry a
+    plain-English `error` and a machine-readable `code`.
+
+    SDKs for this API are generated with APIMatic (see `apimatic/` in the repository).
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development
+  - url: https://open-aisle.onrender.com/api/v1
+    description: Hosted demo on Render (sandbox data)
+security:
+  - bearerAuth: []
+tags:
+  - name: Store
+  - name: Orders
+  - name: Barriers
+  - name: Insights
+paths:
+  /store:
+    get:
+      tags: [Store]
+      operationId: getStore
+      summary: The store this API key belongs to
+      responses:
+        "200":
+          description: The store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, store]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  store: { $ref: "#/components/schemas/Store" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: List the store's orders, newest first
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/OrderStatus" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, orders]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  orders:
+                    type: array
+                    items: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /orders/{id}:
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Get one order
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /orders/{id}/ship:
+    post:
+      tags: [Orders]
+      operationId: shipOrder
+      summary: Mark an order shipped and send the tracking number to PayPal
+      description: |
+        Adds tracking to the PayPal order (`POST /v2/checkout/orders/{id}/track`).
+        Only captured (paid) orders can be shipped. The shopper hears
+        "Your order is on its way".
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShipRequest" }
+      responses:
+        "200":
+          description: The shipped order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "502": { $ref: "#/components/responses/PayPalError" }
+  /orders/{id}/refund:
+    post:
+      tags: [Orders]
+      operationId: refundOrder
+      summary: Refund a paid order in full through PayPal
+      description: |
+        Refunds the PayPal capture (`POST /v2/payments/captures/{id}/refund`).
+        Orders still on hold can't be refunded: the shopper can cancel them,
+        which voids the hold so nothing is charged.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundRequest" }
+      responses:
+        "200":
+          description: The refund
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefundResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "502": { $ref: "#/components/responses/PayPalError" }
+  /barriers:
+    get:
+      tags: [Barriers]
+      operationId: listBarriers
+      summary: List barriers, most-hit first
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/BarrierStatus" }
+      responses:
+        "200":
+          description: Barriers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, barriers]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  barriers:
+                    type: array
+                    items: { $ref: "#/components/schemas/Barrier" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /barriers/{id}:
+    patch:
+      tags: [Barriers]
+      operationId: updateBarrierStatus
+      summary: Move a barrier on the fix board
+      description: To mark a barrier fixed, use `POST /barriers/{id}/fix` with the real information.
+      parameters:
+        - $ref: "#/components/parameters/BarrierId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BarrierStatusRequest" }
+      responses:
+        "200":
+          description: The barrier's new status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BarrierStatusResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /barriers/{id}/draft:
+    post:
+      tags: [Barriers]
+      operationId: draftBarrierFix
+      summary: Get an AI-drafted fix to check
+      description: |
+        For photo descriptions, Claude describes the photo (vision). For facts
+        only the store knows (sizes, materials, return policy) the draft is a
+        fill-in template with `__` blanks: Open Aisle never invents them.
+      parameters:
+        - $ref: "#/components/parameters/BarrierId"
+      responses:
+        "200":
+          description: The draft
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, draft]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  draft: { $ref: "#/components/schemas/BarrierDraft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /barriers/{id}/fix:
+    post:
+      tags: [Barriers]
+      operationId: fixBarrier
+      summary: Write the missing information into the catalog
+      parameters:
+        - $ref: "#/components/parameters/BarrierId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FixRequest" }
+      responses:
+        "200":
+          description: Fixed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BarrierStatusResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /insights:
+    get:
+      tags: [Insights]
+      operationId: getInsights
+      summary: Sales kept, mistakes caught by the undo window, barriers fixed
+      responses:
+        "200":
+          description: Headline numbers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, insights]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  insights: { $ref: "#/components/schemas/Insights" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "A store API key, e.g. `Authorization: Bearer oa_demo_northwind_sandbox_key`."
+  parameters:
+    OrderId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BarrierId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Unauthorized:
+      description: Missing, wrong or revoked API key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found at this store
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Not possible in the current state
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Invalid:
+      description: The request was not valid
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PayPalError:
+      description: PayPal refused the call
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [ok, error, code]
+      properties:
+        ok: { type: boolean, enum: [false] }
+        error: { type: string, description: A sentence a person can read. }
+        code:
+          type: string
+          enum: [unauthorized, not_found, conflict, invalid, paypal_error, server_error]
+    Store:
+      type: object
+      required: [id, slug, name, deliveryDays, deliveryCents, taxRateBasisPoints]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        returnPolicy: { type: string, nullable: true }
+        deliveryDays: { type: integer }
+        deliveryCents: { type: integer }
+        freeDeliveryOverCents: { type: integer, nullable: true }
+        taxRateBasisPoints: { type: integer, description: "825 = 8.25%" }
+    OrderStatus:
+      type: string
+      enum: [held, voided, captured, refunded, failed]
+      description: |
+        held = PayPal authorization, undo window open; voided = shopper cancelled,
+        nothing charged; captured = paid; refunded; failed = PayPal declined.
+    OrderItem:
+      type: object
+      required: [sku, title, variant, quantity, unitPriceCents]
+      properties:
+        sku: { type: string }
+        title: { type: string }
+        variant:
+          type: object
+          additionalProperties: { type: string }
+        quantity: { type: integer }
+        unitPriceCents: { type: integer }
+    Totals:
+      type: object
+      required: [subtotalCents, taxCents, deliveryCents, totalCents, currency, deliveryEstimate]
+      properties:
+        subtotalCents: { type: integer }
+        taxCents: { type: integer }
+        deliveryCents: { type: integer }
+        totalCents: { type: integer }
+        currency: { type: string }
+        deliveryEstimate: { type: string }
+    Tracking:
+      type: object
+      required: [carrier, trackingNumber, status]
+      properties:
+        carrier: { type: string }
+        trackingNumber: { type: string }
+        status: { type: string }
+        eta: { type: string }
+    Order:
+      type: object
+      required: [id, status, amountCents, amount, currency, items, totals, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        amountCents: { type: integer }
+        amount: { type: string, example: "$59.53" }
+        currency: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+        totals: { $ref: "#/components/schemas/Totals" }
+        paypalOrderId: { type: string, nullable: true }
+        captureId: { type: string, nullable: true }
+        undoUntil: { type: string, format: date-time, nullable: true }
+        tracking:
+          allOf:
+            - $ref: "#/components/schemas/Tracking"
+          nullable: true
+        createdAt: { type: string, format: date-time }
+    OrderResponse:
+      type: object
+      required: [ok, order]
+      properties:
+        ok: { type: boolean, enum: [true] }
+        order: { $ref: "#/components/schemas/Order" }
+    ShipRequest:
+      type: object
+      properties:
+        carrier:
+          type: string
+          enum: [USPS, UPS, FEDEX, DHL]
+          default: USPS
+        trackingNumber: { type: string, minLength: 5, maxLength: 64 }
+    RefundRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 2, maxLength: 200 }
+    RefundResponse:
+      type: object
+      required: [ok, refundId, status, order]
+      properties:
+        ok: { type: boolean, enum: [true] }
+        refundId: { type: string }
+        status: { type: string, enum: [completed, pending] }
+        order: { $ref: "#/components/schemas/Order" }
+    BarrierKind:
+      type: string
+      enum: [missing_alt_text, missing_size_chart, missing_return_policy, missing_material, unclear_color]
+    BarrierStatus:
+      type: string
+      enum: [open, in_progress, fixed, dismissed]
+    Barrier:
+      type: object
+      required: [id, kind, detail, status, timesHit, product]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/BarrierKind" }
+        detail: { type: string }
+        status: { $ref: "#/components/schemas/BarrierStatus" }
+        timesHit: { type: integer, description: How many times shoppers needed this information. }
+        suggestedFix: { type: string, nullable: true }
+        lastHitAt: { type: string, format: date-time, nullable: true }
+        product:
+          type: object
+          required: [id, title, sku]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            sku: { type: string }
+    BarrierStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, in_progress, dismissed]
+    BarrierStatusResponse:
+      type: object
+      required: [ok, barrier]
+      properties:
+        ok: { type: boolean, enum: [true] }
+        barrier:
+          type: object
+          required: [id, status]
+          properties:
+            id: { type: string, format: uuid }
+            status: { $ref: "#/components/schemas/BarrierStatus" }
+    BarrierDraft:
+      type: object
+      required: [text, source, note]
+      properties:
+        text: { type: string }
+        source:
+          type: string
+          enum: [ai_from_photo, ai_from_facts, template]
+        note: { type: string }
+    FixRequest:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 3, maxLength: 2000 }
+    Insights:
+      type: object
+      required: [orders, revenueCents, refundedCents, cancelsCaught, cancelsCaughtCents, barriers]
+      properties:
+        orders:
+          type: object
+          required: [held, captured, voided, refunded, failed]
+          properties:
+            held: { type: integer }
+            captured: { type: integer }
+            voided: { type: integer }
+            refunded: { type: integer }
+            failed: { type: integer }
+        revenueCents: { type: integer }
+        refundedCents: { type: integer }
+        cancelsCaught:
+          type: integer
+          description: Orders cancelled inside the undo window. Mistakes that never became a charge, a refund or a dispute.
+        cancelsCaughtCents: { type: integer }
+        barriers:
+          type: object
+          required: [open, fixed, shopperHits, top]
+          properties:
+            open: { type: integer }
+            fixed: { type: integer }
+            shopperHits: { type: integer }
+            top:
+              type: array
+              items:
+                type: object
+                required: [id, kind, timesHit, product]
+                properties:
+                  id: { type: string, format: uuid }
+                  kind: { $ref: "#/components/schemas/BarrierKind" }
+                  timesHit: { type: integer }
+                  product: { type: string }

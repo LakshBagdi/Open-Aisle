@@ -1,0 +1,25 @@
+{
+  "name": "open-aisle",
+  "private": true,
+  "description": "Open Aisle: an AI shopping companion for people the web leaves out. Shopping, open to everyone.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @open-aisle/web dev",
+    "dev:worker": "pnpm --filter @open-aisle/worker dev",
+    "build": "pnpm --filter @open-aisle/web build",
+    "db:generate": "pnpm --filter @open-aisle/core db:generate",
+    "db:migrate": "pnpm --filter @open-aisle/core db:migrate",
+    "db:seed": "pnpm --filter @open-aisle/core db:seed",
+    "fake-paypal": "pnpm --filter @open-aisle/core fake-paypal",
+    "test": "pnpm -r --workspace-concurrency=1 --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "eval": "pnpm --filter @open-aisle/core eval",
+    "demo:activity": "pnpm --filter @open-aisle/core demo:activity",
+    "mcp": "pnpm --filter @open-aisle/mcp start",
+    "e2e": "pnpm --filter @open-aisle/e2e e2e"
+  }
+}

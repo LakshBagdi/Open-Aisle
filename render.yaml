@@ -1,0 +1,54 @@
+# Render Blueprint for the web app and database.
+# After the first deploy, seed the demo data once from the Render shell:
+#   pnpm db:seed && pnpm demo:activity
+# The worker is a Render Workflows service, created in the Render dashboard
+# (Blueprints don't support Workflows yet): build `pnpm install`,
+# start `pnpm --filter @open-aisle/worker start`, same environment variables.
+databases:
+  - name: open-aisle-db
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: open-aisle
+    runtime: node
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm db:migrate && pnpm build
+    startCommand: pnpm --filter @open-aisle/web start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: open-aisle-db
+          property: connectionString
+      - key: APP_URL
+        sync: false
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: RULES_SIGNING_KEY
+        sync: false
+      - key: CONFIRM_TOKEN_SECRET
+        sync: false
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_WORKFLOW_SLUG
+        value: open-aisle-worker
+      # Until the Workflows service is set up, the web app charges orders itself
+      # when their undo window ends. Capture is idempotent, so both can run.
+      - key: INLINE_WORKER
+        value: "true"
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=3072

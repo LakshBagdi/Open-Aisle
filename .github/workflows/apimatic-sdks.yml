@@ -1,0 +1,32 @@
+# Generates typed SDKs for the Merchant API with APIMatic whenever the
+# OpenAPI file changes. Add a repository secret APIMATIC_API_KEY to turn it on.
+name: Merchant SDKs (APIMatic)
+on:
+  push:
+    branches: [main]
+    paths: ["apimatic/**"]
+  workflow_dispatch:
+jobs:
+  sdks:
+    runs-on: ubuntu-latest
+    env:
+      APIMATIC_API_KEY: ${{ secrets.APIMATIC_API_KEY }}
+    strategy:
+      matrix:
+        language: [typescript, python, java]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate the spec
+        if: env.APIMATIC_API_KEY != ''
+        run: npx --yes @apimatic/cli@1.5.0 api validate --file=apimatic/src/spec/openapi.yaml --auth-key="$APIMATIC_API_KEY"
+      - name: Generate the ${{ matrix.language }} SDK
+        if: env.APIMATIC_API_KEY != ''
+        run: npx --yes @apimatic/cli@1.5.0 sdk generate --language=${{ matrix.language }} --input=apimatic --destination=apimatic/sdk/${{ matrix.language }} --force --auth-key="$APIMATIC_API_KEY"
+      - uses: actions/upload-artifact@v4
+        if: env.APIMATIC_API_KEY != ''
+        with:
+          name: open-aisle-merchant-sdk-${{ matrix.language }}
+          path: apimatic/sdk/${{ matrix.language }}

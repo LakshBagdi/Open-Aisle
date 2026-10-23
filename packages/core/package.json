@@ -1,0 +1,55 @@
+{
+  "name": "@open-aisle/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./db": "./src/db/index.ts",
+    "./db/schema": "./src/db/schema.ts",
+    "./paypal": "./src/paypal/index.ts",
+    "./catalog": "./src/catalog/index.ts",
+    "./cart": "./src/cart/index.ts",
+    "./rules": "./src/rules/index.ts",
+    "./orders": "./src/orders/index.ts",
+    "./agent": "./src/agent/index.ts",
+    "./i18n": "./src/i18n/index.ts",
+    "./barriers": "./src/barriers/index.ts",
+    "./account": "./src/account/index.ts",
+    "./money": "./src/money.ts",
+    "./merchant": "./src/merchant/index.ts",
+    "./studio": "./src/studio/index.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "fake-paypal": "tsx src/paypal/fake/server.ts",
+    "eval": "tsx evals/run.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "demo:activity": "tsx scripts/demo-activity.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.82",
+    "@channel3/sdk": "^4.3.0",
+    "@paypal/paypal-server-sdk": "2.5.0",
+    "ai": "^7.0.143",
+    "axios": "1.20.0",
+    "drizzle-orm": "0.45.4",
+    "jose": "^6.2.12",
+    "postgres": "3.4.9",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "12.0.0",
+    "@types/node": "^22.20.5",
+    "dotenv": "^18.0.8",
+    "drizzle-kit": "~0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.5",
+    "yaml": "2.8.1"
+  }
+}

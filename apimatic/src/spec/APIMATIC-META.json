@@ -1,0 +1,20 @@
+{
+  "ImportSettings": {
+    "AutoGenerateTestCases": false,
+    "ImportAdditionalHeader": false,
+    "ImportAdditionalTypeCombinatorModels": false,
+    "ImportTypeCombinatorsWithOnlyOneType": false
+  },
+  "CodeGenSettings": {
+    "Timeout": 30,
+    "ValidateRequiredParameters": true,
+    "EnableGlobalUserAgent": true,
+    "UserAgent": "OpenAisle-Merchant-{language}-SDK/{version}",
+    "EnableLogging": true,
+    "ReturnCompleteHttpResponse": false,
+    "UserConfigurableRetries": true,
+    "UseEnumPrefix": false,
+    "EnforceStandardizedCasing": true,
+    "ControllerPostfix": "Api"
+  }
+}

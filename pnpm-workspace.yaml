@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+onlyBuiltDependencies:
+  - "@bryntum/taskboard-trial"
+  - "@bryntum/taskboard-trial-lib"
+  - esbuild
+  - sharp
+  - "@tailwindcss/oxide"

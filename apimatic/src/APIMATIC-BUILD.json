@@ -1,0 +1,37 @@
+{
+  "$schema": "https://titan.apimatic.io/api/build/schema",
+  "buildFileVersion": "1",
+  "generatePortal": {
+    "pageTitle": "Open Aisle Merchant API",
+    "navTitle": "Open Aisle for stores",
+    "languageConfig": {
+      "typescript": {
+        "packageRepository": "npm",
+        "packageSettings": { "PackageName": "@open-aisle/merchant-sdk", "Version": "1.0.0" }
+      },
+      "python": {
+        "packageRepository": "PyPI",
+        "packageSettings": { "PackageName": "open-aisle-merchant", "Version": "1.0.0" }
+      },
+      "java": {
+        "packageRepository": "Maven",
+        "packageSettings": { "GroupId": "dev.openaisle", "PackageName": "merchant-sdk", "Version": "1.0.0" }
+      },
+      "csharp": {},
+      "php": {},
+      "ruby": {},
+      "go": {},
+      "http": {}
+    },
+    "portalSettings": {
+      "theme": {
+        "baseTheme": "cosmos",
+        "colorMode": { "defaultMode": "light", "disableSwitch": false },
+        "colors": {
+          "primaryColor": { "light": "#0E2A47", "dark": "#FFD23F" },
+          "linkColor": { "light": "#0E2A47", "dark": "#FFD23F" }
+        }
+      }
+    }
+  }
+}

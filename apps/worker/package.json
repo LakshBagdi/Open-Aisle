@@ -1,0 +1,22 @@
+{
+  "name": "@open-aisle/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsx src/local.ts",
+    "start": "tsx src/workflows.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@open-aisle/core": "workspace:*",
+    "@renderinc/sdk": "1.3.0",
+    "dotenv": "^18.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3"
+  }
+}
