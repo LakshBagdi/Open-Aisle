@@ -30,6 +30,9 @@ export function ReadBackDialog(props: {
   onConfirm: () => void;
   onChange: () => void;
   onCancel: () => void;
+  /** Voice: open the microphone to answer ("confirm", "change", "no"). */
+  onTalk?: () => void;
+  listening?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const { data } = props;
@@ -64,7 +67,7 @@ export function ReadBackDialog(props: {
           </div>
           <div className="readback__body">
             <div id="readback-body">
-              <p>From {data.storeName}:</p>
+              <p className="readback__store">From {data.storeName}</p>
               <ul className="readback__lines">
                 {data.lines.map((l) => (
                   <li key={l}>{l}</li>
@@ -99,9 +102,16 @@ export function ReadBackDialog(props: {
               )}
             </div>
             {!data.blockedReason && (
-              <p id="readback-voice-hint" className="hint" style={{ marginTop: "0.75rem" }}>
-                In voice mode you can also say "confirm".
-              </p>
+              <div className="readback__voice">
+                {props.onTalk && (
+                  <button type="button" className="talk-mini" aria-pressed={props.listening} onClick={props.onTalk} disabled={props.busy}>
+                    {props.listening ? "Listening…" : "Answer by voice"}
+                  </button>
+                )}
+                <p id="readback-voice-hint" className="hint">
+                  You can say &ldquo;confirm&rdquo; to pay, &ldquo;change&rdquo; to change something, or &ldquo;no&rdquo; to not order.
+                </p>
+              </div>
             )}
           </div>
         </>

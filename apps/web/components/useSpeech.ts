@@ -1,24 +1,34 @@
 "use client";
 /**
- * Voice mode with the browser's own speech tools (free, no keys).
- *  - listen(): one utterance of speech recognition (Chrome and Edge support it)
- *  - speak():  read text aloud with the browser's voice
- *
- * Screen-reader users usually keep voice mode off: their screen reader
- * already speaks, and two voices at once is confusing.
+ * Voice with the browser's own speech tools (free, no keys).
+ *  - listen(): one utterance of speech recognition, with live captions while
+ *    the person talks (Chrome, Edge and Safari support it)
+ *  - speak():  read text aloud with the browser's voice, then call back, so
+ *    the companion can start listening again for a hands-free conversation
+ *  - chime():  short tones so someone who can't see the screen knows when the
+ *    microphone opens and closes
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+type RecognitionResult = { isFinal: boolean; 0: { transcript: string }; length: number };
 type Recognition = {
   lang: string;
   interimResults: boolean;
+  continuous: boolean;
   maxAlternatives: number;
   start(): void;
   stop(): void;
   abort(): void;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onresult: ((e: { resultIndex: number; results: ArrayLike<RecognitionResult> }) => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
+};
+
+export type ListenHandlers = {
+  onInterim?: (text: string) => void;
+  onFinal: (text: string) => void;
+  /** code is the browser's error code: "no-speech", "not-allowed", ... */
+  onError: (code: string, message: string) => void;
 };
 
 function getRecognition(): (new () => Recognition) | undefined {
@@ -27,60 +37,132 @@ function getRecognition(): (new () => Recognition) | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
+const ERRORS: Record<string, string> = {
+  "no-speech": "I didn't hear anything. Press Space or the yellow button and try again.",
+  "not-allowed": "The microphone is blocked. Allow it in the browser's address bar, or type instead.",
+  "service-not-allowed": "The microphone is blocked. Allow it in the browser's address bar, or type instead.",
+  "audio-capture": "I can't find a microphone. Check it's plugged in, or type instead.",
+  network: "Voice input needs an internet connection. Type instead, or try again.",
+};
+
 export function useSpeech(lang: "en" | "hi") {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const rec = useRef<Recognition | null>(null);
+  const audio = useRef<AudioContext | null>(null);
   const locale = lang === "hi" ? "hi-IN" : "en-US";
 
   useEffect(() => setSupported(Boolean(getRecognition())), []);
+  // Some browsers load voices late; asking once warms the list up.
+  useEffect(() => {
+    window.speechSynthesis?.getVoices();
+  }, []);
+
+  const chime = useCallback((kind: "open" | "close") => {
+    try {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      audio.current ??= new Ctx();
+      const ctx = audio.current;
+      const notes = kind === "open" ? [523.25, 783.99] : [783.99, 523.25];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const t = ctx.currentTime + i * 0.09;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.16);
+      });
+    } catch {
+      /* sound is a nicety; never block voice on it */
+    }
+  }, []);
+
+  const silence = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+  }, []);
 
   const listen = useCallback(
-    (onText: (text: string) => void, onError: (message: string) => void) => {
+    (h: ListenHandlers) => {
       const Ctor = getRecognition();
-      if (!Ctor) return onError("Voice input isn't available in this browser. Try Chrome or Edge, or type instead.");
-      window.speechSynthesis?.cancel();
+      if (!Ctor) return h.onError("unsupported", "Voice input isn't available in this browser. Try Chrome or Edge, or type instead.");
+      silence();
+      rec.current?.abort();
       const r = new Ctor();
       r.lang = locale;
-      r.interimResults = false;
+      r.interimResults = true;
+      r.continuous = false;
       r.maxAlternatives = 1;
+      let finalText = "";
+      let failed = false;
       r.onresult = (e) => {
-        const text = e.results[0]?.[0]?.transcript?.trim();
-        if (text) onText(text);
+        let interim = "";
+        for (let i = 0; i < e.results.length; i++) {
+          const res = e.results[i]!;
+          if (res.isFinal) finalText += res[0].transcript;
+          else interim += res[0].transcript;
+        }
+        h.onInterim?.((finalText + interim).trim());
       };
       r.onerror = (e) => {
-        if (e.error === "no-speech") onError("I didn't hear anything. Press Talk and try again.");
-        else if (e.error === "not-allowed") onError("Microphone access is blocked. Allow it in the browser, or type instead.");
-        else onError("Voice input stopped. Please try again.");
+        if (e.error === "aborted") return;
+        failed = true;
+        h.onError(e.error, ERRORS[e.error] ?? "Voice input stopped. Please try again.");
       };
-      r.onend = () => setListening(false);
+      r.onend = () => {
+        setListening(false);
+        chime("close");
+        const text = finalText.trim();
+        if (text) h.onFinal(text);
+        else if (!failed) h.onError("no-speech", ERRORS["no-speech"]!);
+      };
       rec.current = r;
       setListening(true);
-      r.start();
+      chime("open");
+      try {
+        r.start();
+      } catch {
+        setListening(false);
+        h.onError("busy", "The microphone is busy. Please try again.");
+      }
     },
-    [locale],
+    [locale, chime, silence],
   );
 
   const stop = useCallback(() => {
     rec.current?.stop();
-    setListening(false);
   }, []);
 
   const speak = useCallback(
-    (text: string) => {
-      if (typeof window === "undefined" || !window.speechSynthesis) return;
+    (text: string, onDone?: () => void) => {
+      if (typeof window === "undefined" || !window.speechSynthesis) return onDone?.();
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = locale;
       u.rate = 1;
-      const voice = window.speechSynthesis.getVoices().find((v) => v.lang === locale);
+      const voices = window.speechSynthesis.getVoices();
+      const voice = voices.find((v) => v.lang === locale && /natural|neural|google/i.test(v.name)) ?? voices.find((v) => v.lang === locale);
       if (voice) u.voice = voice;
+      let done = false;
+      const finish = (completed: boolean) => {
+        if (done) return;
+        done = true;
+        setSpeaking(false);
+        if (completed) onDone?.();
+      };
+      u.onend = () => finish(true);
+      u.onerror = (e) => finish(e.error !== "interrupted" && e.error !== "canceled");
+      setSpeaking(true);
       window.speechSynthesis.speak(u);
     },
     [locale],
   );
 
-  const silence = useCallback(() => window.speechSynthesis?.cancel(), []);
-
-  return { supported, listening, listen, stop, speak, silence };
+  return { supported, listening, speaking, listen, stop, speak, silence, chime };
 }

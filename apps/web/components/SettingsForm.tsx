@@ -11,7 +11,7 @@ type Settings = {
 
 const MODE_LABELS = {
   screenReader: { label: "I use a screen reader", hint: "Replies are announced by your screen reader." },
-  voice: { label: "Talk and listen", hint: "Speak your requests; Open Aisle reads replies aloud. Turn this off if your screen reader already speaks." },
+  voice: { label: "Always read replies aloud", hint: "When you talk to Open Aisle it always answers out loud. Turn this on to also hear replies when you type. Leave it off if your screen reader already speaks." },
   plainWords: { label: "Plain words", hint: "Shorter replies and one choice at a time." },
   largeText: { label: "Larger text", hint: "Makes all text bigger." },
 } as const;

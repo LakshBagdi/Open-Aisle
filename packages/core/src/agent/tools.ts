@@ -12,13 +12,13 @@
  * so the model repeats exact values instead of doing maths.
  */
 import { generateText, tool, type LanguageModel } from "ai";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { recordBarrierHits } from "../barriers";
 import { addToCart, CartError, computeTotals, getCart, listOpenCarts, removeFromCart, setQuantity } from "../cart";
 import { channel3Available, getProductWithStore, priceComparison, searchCatalog } from "../catalog";
 import { getDb } from "../db";
-import { spendingRules, stores, type Cart, type Product, type Store } from "../db/schema";
+import { paypalVault, spendingRules, stores, type Cart, type Product, type Store } from "../db/schema";
 import { formatMoney } from "../money";
 import { buildReadBack, cancelOrder, latestHeldOrder, listOrders, OrderError, spendingSummary, startReturn } from "../orders";
 import { cartFingerprint, checkSpending } from "../rules";
@@ -27,7 +27,21 @@ import type { Lang } from "../i18n";
 export type AgentEvent =
   | { type: "readback"; cartId: string; fingerprint: string; storeName: string; lines: string[]; totalLine: string; deliveryLine: string; undoLine: string; spoken: string; blockedReason?: string }
   | { type: "cart_updated"; cartId: string; itemCount: number; total: string }
-  | { type: "order_cancelled"; orderId: string };
+  | { type: "order_cancelled"; orderId: string }
+  | { type: "products"; items: ShownProduct[] };
+
+/** What the screen shows for a search result. Spoken facts still come from the reply. */
+export type ShownProduct = {
+  productId: string;
+  title: string;
+  brand: string | null;
+  store: string;
+  price: string;
+  arrives: string;
+  imageUrl: string | null;
+  imageAlt: string;
+  options: Record<string, string[]>;
+};
 
 export type ToolContext = {
   userId: string;
@@ -114,6 +128,20 @@ export function createTools(ctx: ToolContext) {
           limit: 3,
         });
         if (hits.length === 0) return { results: [], note: "Nothing matched. Suggest trying different words or a higher price." };
+        ctx.events.push({
+          type: "products",
+          items: hits.map(({ product: p, store: s }) => ({
+            productId: p.id,
+            title: p.title,
+            brand: p.brand,
+            store: s.name,
+            price: money(p.priceCents, p.currency),
+            arrives: deliveryBy(s),
+            imageUrl: p.images[0]?.url ?? null,
+            imageAlt: p.images[0]?.alt ?? "",
+            options: p.options,
+          })),
+        });
         return {
           results: hits.map(({ product: p, store: s }) => ({
             product_id: p.id,
@@ -287,7 +315,14 @@ export function createTools(ctx: ToolContext) {
           const rb = buildReadBack(cart, store, rules?.undoWindowSeconds ?? 600, ctx.lang);
           // Check limits now, so the person hears a problem before confirming, not after.
           const check = await checkSpending(ctx.userId, cart.storeId, cart.totals!.totalCents, cart.totals!.currency);
-          const blockedReason = check.ok ? undefined : check.reason;
+          // And that PayPal is connected, for the same reason.
+          const [vault] = await getDb()
+            .select({ token: paypalVault.paymentTokenId })
+            .from(paypalVault)
+            .where(and(eq(paypalVault.userId, ctx.userId), eq(paypalVault.status, "active")))
+            .limit(1);
+          const noPaypal = vault?.token ? undefined : ctx.lang === "hi" ? "आपका PayPal अभी जुड़ा नहीं है। Settings में PayPal जोड़ें, फिर दोबारा कहें।" : "Your PayPal isn't connected yet. Connect it in Settings, then ask me to buy it again.";
+          const blockedReason = check.ok ? noPaypal : check.reason;
           ctx.events.push({ type: "readback", cartId: cart.id, fingerprint: cartFingerprint(cart), storeName: rb.storeName, lines: rb.lines, totalLine: rb.totalLine, deliveryLine: rb.deliveryLine, undoLine: rb.undoLine, spoken: rb.spoken, blockedReason });
           return blockedReason
             ? { status: "blocked", reason: blockedReason, note: "Tell the person the reason. Do not ask them to confirm." }

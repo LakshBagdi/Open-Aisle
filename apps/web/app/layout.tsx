@@ -26,6 +26,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <header className="site-header">
           <div className="site-header__inner">
             <a className="brand" href="/">
+              <span className="brand__mark" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+              </span>
               Open Aisle
             </a>
             <nav className="site-nav" aria-label="Main">
@@ -37,7 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {children}
         </main>
         <footer className="site-footer">
-          <p>Open Aisle pays only through PayPal, only after you confirm the exact order, and you can cancel during the undo window. Open source, MIT licence.</p>
+          <p>Open Aisle pays only through PayPal, only after you confirm the exact order, and you can cancel during the undo window. Open source under the MIT licence.</p>
         </footer>
       </body>
     </html>

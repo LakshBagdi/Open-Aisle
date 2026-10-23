@@ -79,6 +79,10 @@ pnpm dev               # http://localhost:3000
 pnpm demo:activity     # optional: simulated shoppers, so the store pages have numbers
 ```
 
+**No Claude key?** Gemini and Groq both have free tiers. Set `AI_PROVIDER=google`, `GOOGLE_GENERATIVE_AI_API_KEY=...` and `AGENT_MODEL=gemini-3.8-flash` (or `AI_PROVIDER=groq`, `GROQ_API_KEY=...`). Claude is still the best fit: free-tier models are weaker at following the trust rules and have tight rate limits. If the AI fails, Open Aisle now says why (retired model, bad key, too many requests) and logs a line starting `[open-aisle] AI provider error`.
+
+**Voice:** press the yellow button, or Space anywhere on the Shop page, and talk. If you talk, Open Aisle answers out loud and then listens again, so a whole purchase, including "confirm", can happen without the screen. Silence ends the conversation; Escape stops it. Voice input works in Chrome, Edge and Safari.
+
 **No PayPal keys?** Run `pnpm fake-paypal` in another terminal and set `PAYPAL_API_BASE=http://127.0.0.1:4010` and `PAYPAL_WEBHOOK_ID=FAKE-WEBHOOK-ID`. The fake speaks the same API as the sandbox for every call Open Aisle makes, and is just as strict: totals must add up, voided holds can't be captured, request ids are idempotent, and it sends webhooks.
 
 Then: Settings → Connect PayPal → approve → Shop → "black running shoes, size 9, under 60 dollars" → "buy them" → Confirm → wait or say "cancel that".
