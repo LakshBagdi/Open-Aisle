@@ -127,7 +127,7 @@ async function main() {
   await page.waitForURL(/fake\/approve/);
   await page.getByRole("button", { name: "Agree and continue" }).click();
   await page.waitForURL(/settings\?paypal=connected/);
-  await page.getByRole("checkbox", { name: /Read replies aloud/ }).waitFor();
+  await page.getByRole("checkbox", { name: /read replies aloud/i }).waitFor();
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
   const ask = async (words: string) => {
     const reply = page.waitForResponse((r) => r.url().endsWith("/api/chat") && r.request().method() === "POST");

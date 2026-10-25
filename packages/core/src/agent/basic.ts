@@ -97,9 +97,23 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
   const t = ctx.text.trim().toLowerCase().replace(/[?!.]+$/g, "").replace(/’/g, "'");
   const n = pickNumber(t);
   const byNumber = n ? (n === -1 ? mem.results.at(-1) : mem.results[n - 1]) : undefined;
+  // By name, as the product cards' buttons say it: "Tell me more about the Trail Runner 2", "Add the Trail Runner 2 to my cart".
+  let byName = [...mem.results].sort((a, b) => b.title.length - a.title.length).find((r) => t.includes(r.title.toLowerCase()));
+  const named = t.match(/^(?:tell me more about|add) the (.+?)(?: to my cart)?$/)?.[1];
+  if (!byName && named) {
+    // A card from earlier in the conversation: look the product up by its exact name.
+    const before = ctx.events.length;
+    const found = ((await run("search_products", { query: named })).results ?? []) as Hit[];
+    ctx.events.splice(before); // an internal lookup: don't show its results as cards
+    const hit = found.find((h) => h.title.toLowerCase() === named);
+    if (hit) {
+      byName = { id: hit.product_id, title: hit.title, options: hit.options };
+      mem.results = [...mem.results, byName];
+    }
+  }
   // "number 5" when there were 3 results means nothing is chosen (we ask), not "the last one we talked about".
-  const chosen = n !== undefined ? byNumber : (mem.results.find((r) => r.id === mem.focus) ?? (mem.results.length === 1 ? mem.results[0] : undefined));
-  const wantsSomething = /\b(it|that|this|this one|that one|them)\b/.test(t) || n !== undefined;
+  const chosen = n !== undefined ? byNumber : (byName ?? mem.results.find((r) => r.id === mem.focus) ?? (mem.results.length === 1 ? mem.results[0] : undefined));
+  const wantsSomething = /\b(it|that|this|this one|that one|them)\b/.test(t) || n !== undefined || byName !== undefined;
 
   /** Ask which product when "it" is unclear. */
   const which = () => {

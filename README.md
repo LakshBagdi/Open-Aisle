@@ -24,7 +24,7 @@ Other shopping agents are built for people who can see what the agent did. Open 
 
 On the first visit Open Aisle asks how you want to use it (change it any time in Settings):
 
-- **Talk and listen.** Press **Talk** (or **Alt+T** from anywhere, even inside the read-back), say what you need, and hear the answer. A rising tone means "listening", a falling one "got it". **Hands-free** listens again after every reply, so a whole purchase needs no buttons: "black running shoes size 9" → "add number 1" → "buy it" → "confirm" → "cancel that". Short commands (confirm, change, don't order, cancel that, repeat, stop, help) are handled instantly in the browser, not by the AI. Speaking speed is adjustable.
+- **Talk and listen.** Press the yellow **Talk** button, **Space** anywhere on the Shop page, or **Alt+T** from anywhere (even in the text box or the read-back), say what you need, and hear the answer. A rising tone means "listening", a falling one "got it". **Hands-free** (on by default) listens again after every reply, and silence ends it quietly, so a whole purchase needs no buttons: "black running shoes size 9" → "add number 1" → "buy it" → "confirm" → "cancel that". Short commands (confirm, change, don't order, cancel that, repeat, stop, help) are handled instantly in the browser, not by the AI. Speaking speed is adjustable.
 - **Screen reader.** Replies go to a live region your screen reader (NVDA, JAWS, VoiceOver, TalkBack) reads; Open Aisle stays quiet so there aren't two voices. Every page passes WCAG 2.2 AA checks.
 - **Read and type.** Large Atkinson Hyperlegible text, Enter to send.
 
@@ -97,8 +97,6 @@ The fake PayPal speaks the same API as the sandbox for every call Open Aisle mak
 
 **No Claude key?** Gemini and Groq both have free tiers. Set `AI_PROVIDER=google`, `GOOGLE_GENERATIVE_AI_API_KEY=...` and `AGENT_MODEL=gemini-3.8-flash` (or `AI_PROVIDER=groq`, `GROQ_API_KEY=...`). Claude is still the best fit: free-tier models are weaker at following the trust rules and have tight rate limits. If the AI fails, Open Aisle now says why (retired model, bad key, too many requests) and logs a line starting `[open-aisle] AI provider error`.
 
-**Voice:** press the yellow button, or Space anywhere on the Shop page, and talk. If you talk, Open Aisle answers out loud and then listens again, so a whole purchase, including "confirm", can happen without the screen. Silence ends the conversation; Escape stops it. Voice input works in Chrome, Edge and Safari.
-
 Then: Settings → Connect PayPal → approve → Shop → "black running shoes, size 9, under 60 dollars" → "buy them" → Confirm → wait or say "cancel that".
 
 **Merchant API:**
@@ -118,7 +116,7 @@ Full description: [`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)
 ## Tests and evals
 
 ```bash
-pnpm test    # 59 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
+pnpm test    # 60 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
              # the Merchant API, the AG Studio ↔ Claude adapter, the OpenAPI file vs the real routes, MCP checkout
 pnpm eval    # real-model evals (needs ANTHROPIC_API_KEY): trust traps, quality, Hindi → packages/core/evals/results.md
 pnpm e2e     # 29 real-browser checks (with `pnpm demo` running; `pnpm db:seed` first for a clean run): axe on every page, first-visit choice, a full

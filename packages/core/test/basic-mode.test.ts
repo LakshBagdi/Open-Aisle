@@ -115,6 +115,21 @@ describe("falling back when the AI fails", () => {
     expect((await say("something under 20 dollars")).reply).toContain("Stoneware Mug, $14.99");
   });
 
+  it("understands the product cards' buttons, which name the product", async () => {
+    const say = async (text: string, conversationId?: string) => runTurn({ userId: world.user.id, text, conversationId });
+    const s = await say("running shoes");
+    expect(s.events.some((e) => e.type === "products")).toBe(true);
+    const c = s.conversationId;
+    expect((await say("Tell me more about the Trail Runner 2", c)).reply).toMatch(/^Trail Runner 2 from Northwind Outfitters/);
+    expect((await say("Add the Trail Runner 2 to my cart", c)).reply).toMatch(/Which size would you like for the Trail Runner 2/);
+    expect((await say("9", c)).reply).toContain("Added the Trail Runner 2, size 9");
+    // A card from an earlier search still works, and the lookup doesn't show cards again.
+    await say("kitchen scale", c);
+    const again = await say("Add the Trail Runner 2 to my cart", c);
+    expect(again.reply).toMatch(/Which size would you like for the Trail Runner 2/);
+    expect(again.events.some((e) => e.type === "products")).toBe(false);
+  });
+
   it("a stale conversation id starts a fresh conversation instead of failing", async () => {
     const r = await runTurn({ userId: world.user.id, conversationId: "00000000-0000-4000-8000-000000000000", text: "help" });
     expect(r.conversationId).not.toBe("00000000-0000-4000-8000-000000000000");
