@@ -25,7 +25,18 @@ export async function GET() {
 const Body = z.object({
   displayName: z.string().trim().min(1).max(60).optional(),
   language: z.enum(["en", "hi"]).optional(),
-  modes: z.object({ screenReader: z.boolean(), voice: z.boolean(), plainWords: z.boolean(), largeText: z.boolean() }).partial().optional(),
+  modes: z
+    .object({
+      screenReader: z.boolean(),
+      voice: z.boolean(),
+      plainWords: z.boolean(),
+      largeText: z.boolean(),
+      handsFree: z.boolean(),
+      speechRate: z.number().min(0.6).max(2),
+      onboarded: z.boolean(),
+    })
+    .partial()
+    .optional(),
   limits: z
     .object({
       perOrderDollars: z.number().positive().max(10_000),

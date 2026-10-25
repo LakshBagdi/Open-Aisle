@@ -3,6 +3,7 @@ import { listOrders, spendingSummary } from "@open-aisle/core/orders";
 import { getAccountStatus } from "@open-aisle/core/account";
 import { formatMoney } from "@open-aisle/core/money";
 import { OrdersGrid, type OrderRow } from "@/components/OrdersGrid";
+import { OrderActions, type ActionableOrder } from "@/components/OrderActions";
 import { currentUserId } from "@/lib/session";
 
 export const metadata: Metadata = { title: "My orders" };
@@ -23,6 +24,14 @@ export default async function OrdersPage() {
     status: STATUS[o.status],
     delivery: o.tracking ? `${o.tracking.status}, ${o.tracking.carrier}, arriving ${o.tracking.eta}` : o.status === "captured" ? "Not shipped yet" : "",
   }));
+  const actionable: ActionableOrder[] = orders
+    .filter((o) => (o.status === "held" && o.undoUntil && o.undoUntil.getTime() > Date.now()) || o.status === "captured")
+    .map((o) => {
+      const what = `${o.items.map((i) => i.title).join(" and ")} from ${o.storeName}, ${formatMoney(o.amountCents, o.currency)}`;
+      return o.status === "held"
+        ? { id: o.id, kind: "held", label: `${what}. On hold until ${o.undoUntil!.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}; nothing is charged if you cancel.` }
+        : { id: o.id, kind: "paid", label: `${what}. Paid. You can return it.` };
+    });
   const left = account.rules ? Math.max(0, account.rules.monthlyCents - summary.totalCents) : null;
 
   return (
@@ -44,7 +53,15 @@ export default async function OrdersPage() {
           Orders <strong>{orders.length}</strong>
         </li>
       </ul>
-      {rows.length === 0 ? <p>No orders yet. Ask Open Aisle for something on the Shop page.</p> : <OrdersGrid rows={rows} />}
+      <OrderActions orders={actionable} />
+      {rows.length === 0 ? (
+        <p>No orders yet. Ask Open Aisle for something on the Shop page.</p>
+      ) : (
+        <>
+          <h2 style={{ marginTop: "2rem" }}>All orders</h2>
+          <OrdersGrid rows={rows} />
+        </>
+      )}
     </>
   );
 }

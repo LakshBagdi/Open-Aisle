@@ -39,6 +39,12 @@ export type Modes = {
   voice: boolean;
   plainWords: boolean;
   largeText: boolean;
+  /** Listen again after each spoken reply, so a conversation needs no buttons. */
+  handsFree?: boolean;
+  /** Speaking speed for spoken replies: 0.8 (slower) to 2 (much faster). */
+  speechRate?: number;
+  /** The person has chosen how they want to use Open Aisle (first-run question). */
+  onboarded?: boolean;
 };
 
 export type ProductImage = {

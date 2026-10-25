@@ -30,7 +30,12 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const id = new URL(req.url).searchParams.get("conversationId");
-  if (!id) return ok({ messages: [] });
-  return ok({ messages: await conversationMessages(await currentUserId(), id) });
+  try {
+    const id = new URL(req.url).searchParams.get("conversationId");
+    // An unknown or malformed id just means "no conversation yet".
+    if (!id || !z.string().uuid().safeParse(id).success) return ok({ messages: [] });
+    return ok({ messages: await conversationMessages(await currentUserId(), id) });
+  } catch (err) {
+    return handleError(err);
+  }
 }
