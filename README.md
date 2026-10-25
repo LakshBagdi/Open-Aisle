@@ -20,6 +20,18 @@ Other shopping agents are built for people who can see what the agent did. Open 
 2. **Never pay without a clear yes.** The agent has *no tool that pays*. When the person wants to buy, code builds a read-back of the exact cart. Only the person's Confirm (button, or the spoken word "confirm" while the read-back is open) creates a one-time confirmation token. The token is tied to a fingerprint of the exact cart heard, expires in 2 minutes, works once, and checks signed spending limits.
 3. **Mistakes can be undone.** Payment is a PayPal *authorization hold*, not a charge. During the undo window (default 10 minutes) "cancel that" voids the hold and nothing is charged. When the window ends, a Render Workflows task captures it.
 
+## Three ways to use it
+
+On the first visit Open Aisle asks how you want to use it (change it any time in Settings):
+
+- **Talk and listen.** Press **Talk** (or **Alt+T** from anywhere, even inside the read-back), say what you need, and hear the answer. A rising tone means "listening", a falling one "got it". **Hands-free** listens again after every reply, so a whole purchase needs no buttons: "black running shoes size 9" → "add number 1" → "buy it" → "confirm" → "cancel that". Short commands (confirm, change, don't order, cancel that, repeat, stop, help) are handled instantly in the browser, not by the AI. Speaking speed is adjustable.
+- **Screen reader.** Replies go to a live region your screen reader (NVDA, JAWS, VoiceOver, TalkBack) reads; Open Aisle stays quiet so there aren't two voices. Every page passes WCAG 2.2 AA checks.
+- **Read and type.** Large Atkinson Hyperlegible text, Enter to send.
+
+If you speak a request, the answer is spoken even with read-aloud off, unless you use a screen reader. Voice uses the browser's own speech (Chrome, Edge, Safari); no audio leaves the browser except the recognised words.
+
+**Simple mode:** with no Anthropic key, or if the AI service is down, shopping still works with short requests ("running shoes under 60", "tell me about number 2", "add number 1, size 9", "buy it", "cancel that"). Same tools, same read-back, same trust layer.
+
 ## What's in it
 
 | For | Page / part | What it does |
@@ -56,6 +68,7 @@ All of these go through the official **PayPal Server SDK** (`@paypal/paypal-serv
 | Claude inside AG Studio | The insights dashboard's AI assistant: AG Studio's agents send each step to our server, which runs it on Claude and returns tool calls for the dashboard |
 | Grounding check (our code) | Blocks any price or measurement not found in a tool result |
 | Browser Web Speech API | Voice input and spoken replies, no extra service |
+| Simple mode (our code) | Rule-based understanding of short requests when no AI is available, using the same tools |
 
 ## Sponsor tools
 
@@ -100,10 +113,11 @@ Full description: [`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)
 ## Tests and evals
 
 ```bash
-pnpm test    # 48 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
+pnpm test    # 56 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
              # the Merchant API, the AG Studio ↔ Claude adapter, the OpenAPI file vs the real routes, MCP checkout
 pnpm eval    # real-model evals (needs ANTHROPIC_API_KEY): trust traps, quality, Hindi → packages/core/evals/results.md
-pnpm e2e     # 21 real-browser checks (app + fake PayPal running): axe on every page, the full purchase with
+pnpm e2e     # 29 real-browser checks (app + fake PayPal running): axe on every page, first-visit choice, a full
+             # simple-mode purchase with nothing stubbed, the full purchase with
              # keyboard checks, PayPal hold and undo, the fix board, the dashboard, an outside agent's confirm link
 ```
 
@@ -128,7 +142,8 @@ apimatic        APIMatic project for the Merchant API SDKs
 
 ## Limits (honest)
 
-- One demo shopper; real sign-in is out of scope (the confirm page and store pages assume the demo accounts).
+- No real sign-in. Locally everyone is the demo shopper Asha; on the hosted demo (`DEMO_SESSIONS=per-visitor`) each browser gets its own copy of Asha, so visitors don't share a cart or limits. Store pages have no login.
+- Voice input needs Chrome, Edge or Safari (Firefox can still hear replies and type).
 - Demo products are original items with drawn images; real catalogs come from Channel3.
 - PayPal's Store Sync and Agent Ready need an access request; our cart follows the shape of their cart operations.
 - PayPal's approval page appears once when connecting; a helper can do this step.
