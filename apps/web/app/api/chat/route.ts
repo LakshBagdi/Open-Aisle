@@ -8,6 +8,7 @@
 import { conversationMessages, runTurn } from "@open-aisle/core/agent";
 import { z } from "zod";
 import { fail, handleError, ok, sameOrigin } from "@/lib/http";
+import { rateLimited } from "@/lib/rateLimit";
 import { currentUserId } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -20,6 +21,7 @@ const Body = z.object({
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return fail("Request blocked.", 403);
+  if (rateLimited(req, "chat", 30)) return fail("That's a lot of requests in a minute. Please wait a moment and try again.", 429);
   try {
     const body = Body.parse(await req.json());
     const result = await runTurn({ userId: await currentUserId(), text: body.text, conversationId: body.conversationId });

@@ -11,6 +11,7 @@ import { getDb } from "../db";
 import { paypalVault, spendingRules, users, type Modes } from "../db/schema";
 import { env } from "../env";
 import { createPaymentToken, createSetupToken } from "../paypal";
+import { setSpendingRules } from "../rules";
 import type { Lang } from "../i18n";
 
 export async function getUser(userId: string) {
@@ -79,4 +80,21 @@ export async function finishPayPalConnection(userId: string, setupTokenId: strin
     .where(eq(paypalVault.id, row.id))
     .returning();
   return saved!;
+}
+
+const ensured = new Set<string>();
+
+/**
+ * Hosted demo: every visitor gets their own shopper (a copy of the demo
+ * persona "Asha", with the same limits), so judges trying it at the same time
+ * don't share a cart, orders or a monthly limit. Safe to call on every request.
+ */
+export async function ensureShopper(userId: string, displayName = "Asha") {
+  if (ensured.has(userId)) return;
+  const db = getDb();
+  const inserted = await db.insert(users).values({ id: userId, displayName }).onConflictDoNothing({ target: users.id }).returning({ id: users.id });
+  if (inserted.length > 0) {
+    await setSpendingRules(userId, { perOrderCents: 15_000, monthlyCents: 40_000, allowedStoreIds: [], undoWindowSeconds: 600 });
+  }
+  ensured.add(userId);
 }
