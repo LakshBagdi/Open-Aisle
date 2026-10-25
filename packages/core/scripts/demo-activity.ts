@@ -10,7 +10,7 @@
  *   pnpm demo:activity          (needs `pnpm fake-paypal` running, or a sandbox
  *                                account connected in Settings)
  */
-import "dotenv/config";
+import "../src/loadEnv";
 import { and, eq } from "drizzle-orm";
 import { recordBarrierHits } from "../src/barriers";
 import { addToCart } from "../src/cart";

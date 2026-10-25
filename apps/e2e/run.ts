@@ -13,11 +13,10 @@
  * a read-back event for a REAL cart, and everything after that (confirm, PayPal
  * hold, undo, cancel) runs for real against the fake PayPal.
  */
-import { config } from "dotenv";
+import "@open-aisle/core/load-env";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
-config({ path: join(dirname(fileURLToPath(import.meta.url)), "../../packages/core/.env") });
 
 import { AxeBuilder } from "@axe-core/playwright";
 import { and, eq } from "drizzle-orm";

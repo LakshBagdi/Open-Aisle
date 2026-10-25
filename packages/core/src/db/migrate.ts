@@ -2,7 +2,7 @@
  * Applies every migration in ../../drizzle that hasn't run yet.
  * Run with: pnpm db:migrate
  */
-import "dotenv/config";
+import "../loadEnv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/postgres-js/migrator";

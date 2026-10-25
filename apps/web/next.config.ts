@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { config as loadEnv } from "dotenv";
+import { resolve } from "node:path";
+
+// One .env at the repository root is enough (apps/web/.env still works and wins).
+loadEnv({ path: resolve(process.cwd(), "../../.env"), quiet: true });
 
 const config: NextConfig = {
   // Our shared package is TypeScript source; Next compiles it with the app.

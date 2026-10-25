@@ -19,7 +19,8 @@
     "./account": "./src/account/index.ts",
     "./money": "./src/money.ts",
     "./merchant": "./src/merchant/index.ts",
-    "./studio": "./src/studio/index.ts"
+    "./studio": "./src/studio/index.ts",
+    "./load-env": "./src/loadEnv.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

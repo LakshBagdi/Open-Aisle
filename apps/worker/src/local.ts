@@ -4,7 +4,7 @@
  *
  * (Or set INLINE_WORKER=true and the web app does this itself.)
  */
-import "dotenv/config";
+import "@open-aisle/core/load-env";
 import { closeDb } from "@open-aisle/core";
 import { captureDueOrders } from "@open-aisle/core/orders";
 

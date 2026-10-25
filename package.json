@@ -20,6 +20,8 @@
     "eval": "pnpm --filter @open-aisle/core eval",
     "demo:activity": "pnpm --filter @open-aisle/core demo:activity",
     "mcp": "pnpm --filter @open-aisle/mcp start",
-    "e2e": "pnpm --filter @open-aisle/e2e e2e"
+    "e2e": "pnpm --filter @open-aisle/e2e e2e",
+    "demo": "node scripts/demo.mjs",
+    "db:setup": "pnpm db:migrate && pnpm db:seed"
   }
 }

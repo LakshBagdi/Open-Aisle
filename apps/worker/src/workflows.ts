@@ -13,7 +13,7 @@
  *   sweepDueOrders()                      safety net: charges anything overdue
  *   draftBarrierFixes(storeId)            AI drafts for a store's open barriers
  */
-import "dotenv/config";
+import "@open-aisle/core/load-env";
 import { task, type TaskContext } from "@renderinc/sdk/workflows";
 import { env } from "@open-aisle/core";
 import { defaultModel } from "@open-aisle/core/agent";
