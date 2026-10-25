@@ -11,6 +11,8 @@ const config: NextConfig = {
   // These run only on the server and work best loaded straight from node_modules.
   serverExternalPackages: ["@paypal/paypal-server-sdk", "axios", "postgres"],
   poweredByHeader: false,
+  // Don't write an AGENTS.md into the repo when `next dev` starts.
+  agentRules: false,
 };
 
 export default config;

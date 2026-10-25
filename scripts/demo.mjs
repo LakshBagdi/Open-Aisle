@@ -37,7 +37,8 @@ run(["db:seed"]);
 
 const children = [];
 const start = (name, args, extraEnv = {}) => {
-  const child = spawn("pnpm", args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...extraEnv } });
+  // detached = its own process group, so Ctrl+C can stop everything it started.
+  const child = spawn("pnpm", args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...extraEnv }, detached: true });
   const tag = (data) => data.toString().split("\n").filter(Boolean).forEach((line) => console.log(`[${name}] ${line}`));
   child.stdout.on("data", tag);
   child.stderr.on("data", tag);
@@ -46,9 +47,17 @@ const start = (name, args, extraEnv = {}) => {
 if (useFake) start("paypal", ["fake-paypal"]);
 start("app", ["dev"], { INLINE_WORKER: "true" });
 
-console.log(`\nStarting${useFake ? " the fake PayPal and" : ""} the app. Open http://localhost:3000 in Chrome or Edge.\n`);
+const port = process.env.PORT ?? "3000";
+console.log(`\nStarting${useFake ? " the fake PayPal and" : ""} the app (the first page takes a few seconds to compile).`);
+console.log(`Open http://localhost:${port} in Chrome or Edge. Press Ctrl+C to stop.\n`);
 const stop = () => {
-  for (const c of children) c.kill("SIGINT");
+  for (const c of children) {
+    try {
+      process.kill(-c.pid, "SIGTERM");
+    } catch {
+      /* already stopped */
+    }
+  }
   process.exit(0);
 };
 process.on("SIGINT", stop);
