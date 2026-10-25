@@ -35,7 +35,7 @@ export function OrderActions({ orders }: { orders: ActionableOrder[] }) {
   if (orders.length === 0) return null;
   return (
     <section aria-labelledby="actions-title" className="panel" style={{ maxWidth: "44rem" }}>
-      <h2 id="actions-title">Things you can do</h2>
+      <h2 id="actions-title">Cancel or return</h2>
       <p ref={msgRef} tabIndex={-1} role={message?.error ? "alert" : "status"} className={message ? `notice${message.error ? " notice--error" : ""}` : "visually-hidden"}>
         {message?.text ?? ""}
       </p>

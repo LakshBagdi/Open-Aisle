@@ -79,6 +79,7 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
   const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const talkRef = useRef<HTMLButtonElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const warnedOneMinute = useRef(false);
   const lastReply = useRef("");
   const speech = useSpeech(lang, modes.speechRate ?? 1);
@@ -397,6 +398,11 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
     inputRef.current?.focus();
   }, [say, T]);
 
+  // Show the newest reply: the message box sits right under it.
+  useEffect(() => {
+    if (turns.length) formRef.current?.scrollIntoView({ block: "nearest" });
+  }, [turns.length]);
+
   const left = undo ? undo.until - now : 0;
   const examples = [T("example1"), T("example2"), T("example3")];
 
@@ -465,6 +471,7 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         )}
 
         <form
+          ref={formRef}
           className="composer"
           onSubmit={(e) => {
             e.preventDefault();
@@ -488,7 +495,7 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
             </div>
           )}
           <label htmlFor="ask">{T("messageLabel")}</label>
-          <p className="hint" id="ask-hint">
+          <p className="visually-hidden" id="ask-hint">
             {T("messageHint")}
           </p>
           <div className="composer__row">
@@ -522,12 +529,6 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
                 <span>{T("speakReplies")}</span>
               </label>
             )}
-            {speech.supported && (
-              <label className="check check--inline">
-                <input type="checkbox" checked={Boolean(modes.handsFree)} onChange={(e) => updateModes({ handsFree: e.target.checked })} />
-                <span>{T("handsFree")}</span>
-              </label>
-            )}
             {turns.length > 0 && (
               <button type="button" className="btn btn--quiet" onClick={newConversation}>
                 {T("newConversation")}
@@ -556,7 +557,19 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         )}
         <section className="panel" aria-labelledby="cart-title">
           <h2 id="cart-title">{T("cartTitle")}</h2>
-          {cart ? <p>{T("cartLine", { count: `${cart.itemCount} ${cart.itemCount === 1 ? T("item") : T("items")}`, total: cart.total })}</p> : <p>{T("cartEmpty")}</p>}
+          {cart ? (
+            <>
+              <p>{T("cartLine", { count: `${cart.itemCount} ${cart.itemCount === 1 ? T("item") : T("items")}`, total: cart.total })}</p>
+              <button type="button" className="btn btn--primary" aria-describedby="checkout-hint" onClick={() => void send("buy it")} disabled={busy}>
+                {T("checkout")}
+              </button>
+              <p className="hint" id="checkout-hint">
+                {T("checkoutHint")}
+              </p>
+            </>
+          ) : (
+            <p>{T("cartEmpty")}</p>
+          )}
         </section>
         <section className="panel" aria-labelledby="promise-title">
           <h2 id="promise-title">{T("promisesTitle")}</h2>

@@ -30,7 +30,19 @@ export type SearchHit = {
   matchedOn: string[];
 };
 
-const STOP = new Set(["a", "an", "the", "for", "and", "or", "of", "to", "in", "with", "i", "need", "want", "some", "me", "my", "pair", "please", "under", "below", "size"]);
+const STOP = new Set([
+  "a", "an", "the", "for", "and", "or", "of", "to", "in", "with", "i", "need", "want", "some", "me", "my", "pair", "please", "under", "below", "size",
+  "something", "anything", "everything", "stuff", "thing", "things", "dollar", "dollars", "cheap", "good", "nice", "new", "any", "is", "there", "do", "you", "have", "show", "find", "get", "buy", "looking",
+]);
+
+/** Very light stemming so "running" finds "Runner" and "shoes" finds "shoe". */
+function stem(t: string): string {
+  if (t.length > 5 && t.endsWith("ing")) {
+    const base = t.slice(0, -3);
+    return /(.)\1$/.test(base) ? base.slice(0, -1) : base; // running → run
+  }
+  return t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t;
+}
 
 export function tokens(text: string): string[] {
   return text
@@ -38,7 +50,7 @@ export function tokens(text: string): string[] {
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
     .filter((t) => t.length > 1 && !STOP.has(t))
-    .map((t) => (t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t));
+    .map(stem);
 }
 
 function haystack(p: Product, s: Store) {

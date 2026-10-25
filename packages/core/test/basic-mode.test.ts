@@ -49,14 +49,13 @@ describe("a whole purchase in simple mode", () => {
   it("search → details → add → read-back; nothing is paid", async () => {
     const r1 = await runTurn({ userId: world.user.id, text: "trail running shoes under 60" });
     expect(r1.mode).toBe("basic");
-    expect(r1.reply).toContain("Number 1: Trail Runner 2");
-    expect(r1.reply).toContain("$54.99");
+    expect(r1.reply).toContain("Number 1: Trail Runner 2, $54.99");
 
     const r2 = await runTurn({ userId: world.user.id, conversationId: r1.conversationId, text: "tell me about number 1" });
     expect(r2.reply).toContain("material: Recycled mesh upper");
 
     const r3 = await runTurn({ userId: world.user.id, conversationId: r1.conversationId, text: "add number 1" });
-    expect(r3.reply).toMatch(/Which size .* Options: 8, 9, 10, 11/);
+    expect(r3.reply).toMatch(/Which size would you like for the Trail Runner 2\? You can choose 8, 9, 10, 11/);
 
     const r4 = await runTurn({ userId: world.user.id, conversationId: r1.conversationId, text: "9" });
     expect(r4.reply).toContain("Added the Trail Runner 2, size 9");
@@ -97,6 +96,23 @@ describe("falling back when the AI fails", () => {
     const r = await runTurn({ userId: world.user.id, text: "trail running shoes", model: broken });
     expect(r.mode).toBe("basic");
     expect(r.reply).toMatch(/^The AI isn't reachable right now, so I'm in simple mode\. I found 1/);
+  });
+
+  it("understands everyday phrasing", async () => {
+    const say = async (text: string, conversationId?: string) => runTurn({ userId: world.user.id, text, conversationId });
+    expect((await say("hi")).reply).toMatch(/^Hello!/);
+    expect((await say("thanks")).reply).toMatch(/welcome/);
+    const s = await say("trail running shoes size 9");
+    expect(s.reply).toContain("I found 1");
+    const c = s.conversationId;
+    expect((await say("what is it made of", c)).reply).toContain("Recycled mesh upper");
+    expect((await say("is there a size chart", c)).reply).toContain("27 cm");
+    // The size said in the search is remembered, so "add it" doesn't ask again.
+    expect((await say("add it", c)).reply).toContain("Added the Trail Runner 2, size 9");
+    expect((await say("add it", c)).reply).toMatch(/^Added another Trail Runner 2, size 9\. You now have 2 of them/);
+    expect((await say("remove it", c)).reply).toContain("Removed the Trail Runner 2");
+    expect((await say("tell me about number 5", c)).reply).toMatch(/I only found 1/);
+    expect((await say("something under 20 dollars")).reply).toContain("Stoneware Mug, $14.99");
   });
 
   it("a stale conversation id starts a fresh conversation instead of failing", async () => {

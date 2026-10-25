@@ -14,7 +14,7 @@ async function loop() {
   console.log("Open Aisle local worker: checking for orders to charge every 5 seconds.");
   while (!stopping) {
     try {
-      const { captured, failed } = await captureDueOrders();
+      const { captured, failed } = await captureDueOrders(); // expired holds are final and not listed
       if (captured.length) console.log(`Charged: ${captured.join(", ")}`);
       if (failed.length) console.warn(`Will retry: ${failed.join(", ")}`);
     } catch (err) {

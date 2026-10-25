@@ -318,14 +318,6 @@ legend {
   padding: 1rem 0 1.25rem;
   border-top: 2px solid var(--navy);
 }
-/* Keep the message box in view on big screens only; with zoom or a small
-   screen a stuck box would cover half the conversation. */
-@media (min-width: 64rem) and (min-height: 50rem) {
-  html:not([data-large-text="true"]) .composer {
-    position: sticky;
-    bottom: 0;
-  }
-}
 .composer__row {
   display: flex;
   gap: 0.75rem;
@@ -649,4 +641,16 @@ dialog.readback::backdrop {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Wrapped text in grids: normal line spacing instead of the row height. */
+.ag-cell-wrap-text {
+  line-height: 1.45;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  word-break: normal;
+}
+.side .btn--primary {
+  width: 100%;
+  margin-top: 0.25rem;
 }

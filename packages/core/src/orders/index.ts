@@ -102,6 +102,14 @@ function payPalReason(err: PayPalError): string {
   return "PayPal couldn't place the order.";
 }
 
+function paypalIssue(err: unknown): string | undefined {
+  return err instanceof PayPalError ? ((err.details as any)?.details?.[0]?.issue as string | undefined) : undefined;
+}
+/** PayPal has no usable hold any more: nothing can be charged or released. */
+function holdIsGone(issue: string | undefined) {
+  return issue === "INVALID_RESOURCE_ID" || issue === "AUTHORIZATION_EXPIRED";
+}
+
 /** "Cancel that." Works only inside the undo window. */
 export async function cancelOrder(userId: string, orderId: string, now = new Date()): Promise<{ order: Order; message: string }> {
   const lang = await langOf(userId);
@@ -115,7 +123,12 @@ export async function cancelOrder(userId: string, orderId: string, now = new Dat
     if (order.status === "voided") return { order, message: t(lang, "order.voided") };
     if (order.status !== "held" || !order.authorizationId) throw new OrderError("too_late", t(lang, "order.tooLate"));
 
-    await releaseHold(order.authorizationId, `void-${order.id}`);
+    try {
+      await releaseHold(order.authorizationId, `void-${order.id}`);
+    } catch (err) {
+      // A hold PayPal no longer has (expired, or unknown) can't be charged either: cancelling is still true.
+      if (!holdIsGone(paypalIssue(err))) throw err;
+    }
     const [updated] = await tx.update(orders).set({ status: "voided", undoUntil: null }).where(eq(orders.id, order.id)).returning();
     const message = t(lang, "order.voided");
     await tx.insert(notifications).values({ userId, orderId: order.id, text: message });
@@ -159,7 +172,7 @@ export async function captureDueOrders(now = new Date(), limit = 20): Promise<{ 
   return { captured, failed };
 }
 
-export type CaptureOutcome = "captured" | "voided" | "not_due" | "skipped" | "failed";
+export type CaptureOutcome = "captured" | "voided" | "not_due" | "skipped" | "failed" | "expired";
 
 /**
  * Charge ONE order if its undo window has ended. Used by the sweep above and
@@ -183,7 +196,14 @@ export async function captureOrder(id: string, now = new Date()): Promise<Captur
       });
       return "captured";
     } catch (err) {
-      const issue = err instanceof PayPalError ? ((err.details as any)?.details?.[0]?.issue as string | undefined) : undefined;
+      const issue = paypalIssue(err);
+      if (holdIsGone(issue)) {
+        // The hold expired or PayPal doesn't know it: it can never be charged, so stop retrying and say so.
+        await tx.update(orders).set({ status: "failed", undoUntil: null }).where(eq(orders.id, order.id));
+        const [store] = await tx.select({ name: stores.name }).from(stores).where(eq(stores.id, order.storeId));
+        await tx.insert(notifications).values({ userId: order.userId, orderId: order.id, text: t(await langOf(order.userId), "order.failed", { store: store?.name ?? "the store" }) });
+        return "expired"; // final: nothing to retry
+      }
       if (issue === "AUTHORIZATION_VOIDED") {
         await tx.update(orders).set({ status: "voided", undoUntil: null }).where(eq(orders.id, order.id));
         return "voided";

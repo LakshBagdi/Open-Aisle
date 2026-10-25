@@ -203,3 +203,27 @@ describe("the trust layer, more", () => {
     await expect(issueConfirmation(world.user.id, cart.id)).rejects.toMatchObject({ code: "cart_empty" });
   });
 });
+
+describe("a hold PayPal no longer has", () => {
+  async function placedWithLostHold() {
+    const cart = await cartWithShoe();
+    const { order } = await placeOrder(world.user.id, cart.id, (await issueConfirmation(world.user.id, cart.id)).token);
+    // As if the hold expired at PayPal (or the fake PayPal restarted).
+    await getDb().update(orders).set({ authorizationId: "AUTH-GONE" }).where(eq(orders.id, order.id));
+    return order;
+  }
+
+  it("is marked failed (not retried forever), and the shopper is told nothing was charged", async () => {
+    const order = await placedWithLostHold();
+    expect(await captureOrder(order.id, new Date(Date.now() + 11 * 60_000))).toBe("expired");
+    const [row] = await getDb().select().from(orders).where(eq(orders.id, order.id));
+    expect(row!.status).toBe("failed");
+    const notes = await unreadNotifications(world.user.id);
+    expect(notes.map((n) => n.text)).toContain("Your order from Northwind Outfitters didn't go through, so nothing was charged. You can order it again.");
+  });
+
+  it("can still be cancelled", async () => {
+    const order = await placedWithLostHold();
+    expect((await cancelOrder(world.user.id, order.id)).message).toBe("Cancelled. Nothing was charged.");
+  });
+});

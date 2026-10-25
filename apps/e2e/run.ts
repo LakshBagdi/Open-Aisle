@@ -6,8 +6,8 @@
  *   pnpm e2e                  (terminal 3)
  *
  * Needs a Chromium: `npx playwright install chromium`, or set CHROME_PATH.
- * Uses the same database as the app (DATABASE_URL in packages/core/.env), and
- * re-seeds the demo data first.
+ * Uses the same database as the app (DATABASE_URL in the root .env). For a
+ * clean run, reset the demo data first with `pnpm db:seed`.
  *
  * Only /api/chat is stubbed (so no Anthropic key is needed): the stub returns
  * a read-back event for a REAL cart, and everything after that (confirm, PayPal
@@ -135,6 +135,8 @@ async function main() {
     await page.getByLabel("Your message").press("Enter");
     return (await (await reply).json()) as { ok: boolean; reply: string; mode: string };
   };
+  // Start from an empty cart, whatever earlier runs left behind.
+  await getDb().update(carts).set({ status: "abandoned" }).where(and(eq(carts.userId, USER), eq(carts.status, "open")));
   const first = await ask("trail running shoes under 60");
   if (first.mode !== "basic") {
     console.log("  (skipped: an AI key is set, so the app isn't in simple mode)");

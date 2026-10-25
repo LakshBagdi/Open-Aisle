@@ -80,19 +80,20 @@ All of these go through the official **PayPal Server SDK** (`@paypal/paypal-serv
 
 ## Run it
 
-Requirements: Node 22+, pnpm 10, PostgreSQL 16.
+Requirements: Node 22+, pnpm 10, PostgreSQL 16 (running, with a database called `openaisle`).
 
 ```bash
 pnpm install
-cp .env.example .env && cp .env apps/web/.env && cp .env packages/core/.env
-# edit .env: DATABASE_URL, ANTHROPIC_API_KEY, and PayPal sandbox keys
-pnpm db:migrate
-pnpm db:seed           # 2 demo stores, 15 products, demo shopper "Asha", demo Merchant API keys
-pnpm dev               # http://localhost:3000
-pnpm demo:activity     # optional: simulated shoppers, so the store pages have numbers
+pnpm demo              # http://localhost:3000
 ```
 
-**No PayPal keys?** Run `pnpm fake-paypal` in another terminal and set `PAYPAL_API_BASE=http://127.0.0.1:4010` and `PAYPAL_WEBHOOK_ID=FAKE-WEBHOOK-ID`. The fake speaks the same API as the sandbox for every call Open Aisle makes, and is just as strict: totals must add up, voided holds can't be captured, request ids are idempotent, and it sends webhooks.
+That's it. `pnpm demo` makes `.env` from `.env.example` if you don't have one, sets up and fills the database (2 demo stores, 15 products, demo shopper "Asha"), and starts the app together with a fake PayPal, so it works with **no keys at all**. Without an `ANTHROPIC_API_KEY` the assistant runs in *simple mode*: it understands short requests ("running shoes under 60", "add number 1", "buy it", "cancel that"); add a key to `.env` for full conversation.
+
+Everything lives in one `.env` at the top of the repo. To use the real PayPal sandbox instead of the fake, put your sandbox `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` in `.env` and remove the `PAYPAL_API_BASE` line. Different database? Change `DATABASE_URL`.
+
+Other commands: `pnpm db:setup` (set up and refill the database only), `pnpm demo:activity` (simulated shoppers, so the store pages have numbers), `pnpm fake-paypal` and `pnpm dev` (run the two parts yourself).
+
+The fake PayPal speaks the same API as the sandbox for every call Open Aisle makes, and is just as strict: totals must add up, voided holds can't be captured, request ids are idempotent, and it sends webhooks.
 
 Then: Settings → Connect PayPal → approve → Shop → "black running shoes, size 9, under 60 dollars" → "buy them" → Confirm → wait or say "cancel that".
 
@@ -113,10 +114,10 @@ Full description: [`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)
 ## Tests and evals
 
 ```bash
-pnpm test    # 56 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
+pnpm test    # 59 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
              # the Merchant API, the AG Studio ↔ Claude adapter, the OpenAPI file vs the real routes, MCP checkout
 pnpm eval    # real-model evals (needs ANTHROPIC_API_KEY): trust traps, quality, Hindi → packages/core/evals/results.md
-pnpm e2e     # 29 real-browser checks (app + fake PayPal running): axe on every page, first-visit choice, a full
+pnpm e2e     # 29 real-browser checks (with `pnpm demo` running; `pnpm db:seed` first for a clean run): axe on every page, first-visit choice, a full
              # simple-mode purchase with nothing stubbed, the full purchase with
              # keyboard checks, PayPal hold and undo, the fix board, the dashboard, an outside agent's confirm link
 ```

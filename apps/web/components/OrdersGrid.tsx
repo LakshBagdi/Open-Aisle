@@ -6,12 +6,12 @@ import { accessibleGridOptions } from "./grid";
 export type OrderRow = { id: string; date: string; store: string; items: string; amount: string; amountCents: number; status: string; delivery: string };
 
 const columns: ColDef<OrderRow>[] = [
-  { field: "date", headerName: "Date", width: 140 },
-  { field: "store", headerName: "Store", width: 210 },
-  { field: "items", headerName: "Items", flex: 2, minWidth: 260, wrapText: true, autoHeight: true },
-  { field: "amount", headerName: "Amount", width: 130, comparator: (_a, _b, n1, n2) => (n1.data?.amountCents ?? 0) - (n2.data?.amountCents ?? 0) },
-  { field: "status", headerName: "Status", width: 220 },
-  { field: "delivery", headerName: "Delivery", flex: 1, minWidth: 220, wrapText: true, autoHeight: true },
+  { field: "date", headerName: "Date", width: 155 },
+  { field: "store", headerName: "Store", width: 170, wrapText: true, autoHeight: true },
+  { field: "items", headerName: "Items", flex: 2, minWidth: 220, wrapText: true, autoHeight: true },
+  { field: "amount", headerName: "Amount", width: 115, comparator: (_a, _b, n1, n2) => (n1.data?.amountCents ?? 0) - (n2.data?.amountCents ?? 0) },
+  { field: "status", headerName: "Status", width: 180, wrapText: true, autoHeight: true },
+  { field: "delivery", headerName: "Delivery", flex: 1, minWidth: 180, wrapText: true, autoHeight: true },
 ];
 
 export function OrdersGrid({ rows }: { rows: OrderRow[] }) {
