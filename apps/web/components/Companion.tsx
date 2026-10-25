@@ -3,27 +3,36 @@
  * The shopping companion.
  *
  * Voice first, screen-reader safe:
- *  - One big talk button, also on the Space key from anywhere on the page.
- *    A rising tone means "listening", a falling tone means "stopped".
- *  - If you speak, Open Aisle speaks back, then listens again, so a whole
- *    purchase can happen without touching the screen. Silence ends it.
- *  - If you type, replies go to a polite live region instead, so a screen
- *    reader reads them and two voices never talk over each other (unless
- *    "Read replies aloud" is on).
+ *  - First visit asks how the person wants to use it: talk and listen, their
+ *    own screen reader, or read and type (changeable in Settings).
+ *  - One big talk button, also on Space (when not typing or on a control) and
+ *    on Alt+T from anywhere, even inside the read-back. A rising tone means
+ *    "listening", a falling tone means "stopped".
+ *  - If you speak, Open Aisle speaks back (unless you use a screen reader),
+ *    then listens again, so a whole purchase can happen without touching the
+ *    screen. Silence ends it quietly.
+ *  - If you type, replies go to a polite live region, so a screen reader reads
+ *    them and two voices never talk over each other (unless "Read replies
+ *    aloud" is on).
  *  - The conversation is a list; each turn has a heading ("You said",
  *    "Open Aisle said") so people can jump turn to turn with the H key.
  *
+ * Short commands are handled here, without the AI, so they are instant and
+ * can't be misunderstood: confirm / change / don't order (while the read-back
+ * is open), cancel that (inside the undo window), repeat, stop, help.
+ *
  * Money moves only through the read-back dialog's Confirm (see ReadBackDialog).
  */
-import { isConfirmPhrase, type Lang } from "@open-aisle/core/i18n";
+import { isConfirmPhrase, voiceCommand } from "@open-aisle/core/i18n";
 import type { ShownProduct } from "@open-aisle/core/agent";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ProductCards } from "./ProductCards";
 import { ReadBackDialog, type ReadBackData } from "./ReadBackDialog";
+import { ui, type Lang, type UiKey } from "./uiText";
 import { useSpeech } from "./useSpeech";
 
 type Turn = { id: string; kind: "you" | "agent" | "note" | "error"; text: string; products?: ShownProduct[] };
-type Modes = { screenReader: boolean; voice: boolean; plainWords: boolean; largeText: boolean };
+export type Modes = { screenReader: boolean; voice: boolean; plainWords: boolean; largeText: boolean; handsFree?: boolean; speechRate?: number; onboarded?: boolean };
 type AgentEvent =
   | ({ type: "readback" } & ReadBackData)
   | { type: "cart_updated"; cartId: string; itemCount: number; total: string }
@@ -31,11 +40,8 @@ type AgentEvent =
   | { type: "products"; items: ShownProduct[] };
 type Undo = { orderId: string; until: number; total: number };
 
-const HEADINGS = { you: "You said", agent: "Open Aisle said", note: "Update", error: "Problem" } as const;
 const CONV_KEY = "open-aisle:conversation";
-const PREFS_KEY = "open-aisle:voice-prefs";
-const SUGGESTIONS = ["Black running shoes, size 9, under 60 dollars", "A kitchen scale that talks", "Where's my last order?", "How much have I spent this month?"];
-const STOP_WORDS = /^(no|stop|cancel|don'?t|do not)( order| it| that)?[.!]*$/i;
+const STARTERS: UiKey[] = ["starter1", "starter2", "starter3", "starter4"];
 
 function session(key: string, value?: string | null) {
   try {
@@ -47,18 +53,12 @@ function session(key: string, value?: string | null) {
   }
   return null;
 }
-function loadPrefs(): { readAloud?: boolean; handsFree?: boolean } {
+
+async function saveModes(modes: Partial<Modes>) {
   try {
-    return JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
+    await fetch("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modes }) });
   } catch {
-    return {};
-  }
-}
-function savePrefs(p: { readAloud: boolean; handsFree: boolean }) {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
-  } catch {
-    /* fine: preference lasts for this visit only */
+    /* the choice still applies for this visit */
   }
 }
 
@@ -71,13 +71,15 @@ function mmss(ms: number) {
 function spaceIsFree(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return true;
   if (target.isContentEditable) return false;
-  return !target.closest("input, textarea, select, button, a, summary, [role='button'], [role='checkbox'], [role='grid'], [role='gridcell']");
+  return !target.closest("input, textarea, select, button, a, summary, [role='button'], [role='checkbox'], [role='grid'], [role='gridcell'], [role='dialog']");
 }
 
 let counter = 0;
 const nextId = () => `t${Date.now()}-${counter++}`;
 
 export function Companion(props: { name: string; lang: Lang; modes: Modes; paypalConnected: boolean }) {
+  const lang = props.lang;
+  const [modes, setModes] = useState<Modes>(props.modes);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -90,26 +92,22 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [cart, setCart] = useState<{ itemCount: number; total: string } | null>(null);
   const [undo, setUndo] = useState<Undo | null>(null);
+  const [simple, setSimple] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [readAloud, setReadAloud] = useState(props.modes.voice);
-  const [handsFree, setHandsFree] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const talkRef = useRef<HTMLButtonElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const warnedOneMinute = useRef(false);
+  const lastReply = useRef("");
   /** True while the conversation is happening by voice: replies are spoken, then we listen again. */
   const voiceTurn = useRef(false);
-  const speech = useSpeech(props.lang);
+  const speech = useSpeech(lang, modes.speechRate ?? 1);
+  const T = useCallback((k: UiKey, v?: Record<string, string>) => ui(lang, k, v), [lang]);
 
   // Latest values for callbacks that fire later (after speech ends, from key presses).
-  const live = useRef({ readback, busy, handsFree, readAloud, confirming });
-  live.current = { readback, busy, handsFree, readAloud, confirming };
-
-  useEffect(() => {
-    const p = loadPrefs();
-    if (typeof p.readAloud === "boolean") setReadAloud(p.readAloud || props.modes.voice);
-    if (typeof p.handsFree === "boolean") setHandsFree(p.handsFree);
-  }, [props.modes.voice]);
-  useEffect(() => savePrefs({ readAloud, handsFree }), [readAloud, handsFree]);
+  const live = useRef({ readback, busy, confirming, modes, undo });
+  live.current = { readback, busy, confirming, modes, undo };
+  const listenRef = useRef<(auto: boolean) => void>(() => {});
 
   const add = useCallback((kind: Turn["kind"], t: string, products?: ShownProduct[]) => setTurns((prev) => [...prev, { id: nextId(), kind, text: t, products }]), []);
 
@@ -122,18 +120,20 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
     end.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [turns.length, busy]);
 
-  const listenRef = useRef<(auto: boolean) => void>(() => {});
-
   /**
-   * Say something. Spoken when the person is talking to us (or asked for
-   * spoken replies); otherwise sent to the live region for their screen reader.
-   * After speaking in a voice conversation, listen again.
+   * Say something. Spoken when "read replies aloud" is on, or when the person
+   * is talking to us (unless their screen reader speaks for them); otherwise
+   * sent to the live region for their screen reader. In a voice
+   * conversation, listen again afterwards (hands-free).
    */
   const say = useCallback(
     (message: string, opts: { listenAfter?: boolean } = {}) => {
-      if (voiceTurn.current || live.current.readAloud) {
+      lastReply.current = message;
+      const m = live.current.modes;
+      const spoken = m.voice || (voiceTurn.current && !m.screenReader);
+      if (spoken && speech.canSpeak) {
         speech.speak(message, () => {
-          if (opts.listenAfter && voiceTurn.current && live.current.handsFree) listenRef.current(true);
+          if (opts.listenAfter && voiceTurn.current && m.handsFree !== false) listenRef.current(true);
         });
       } else {
         setAnnounce("");
@@ -144,18 +144,33 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
     [speech],
   );
 
-  // Restore the conversation after a reload.
+  // Pick up where the person left off: conversation, held order, cart.
   useEffect(() => {
     const id = session(CONV_KEY);
-    if (!id) return;
-    setConversationId(id);
-    fetch(`/api/chat?conversationId=${encodeURIComponent(id)}`)
+    if (id) {
+      setConversationId(id);
+      fetch(`/api/chat?conversationId=${encodeURIComponent(id)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ok) setTurns(d.messages.map((m: { id: string; role: string; text: string }) => ({ id: m.id, kind: m.role === "user" ? "you" : "agent", text: m.text })));
+        })
+        .catch(() => {});
+    }
+    fetch("/api/status")
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok) setTurns(d.messages.map((m: { id: string; role: string; text: string }) => ({ id: m.id, kind: m.role === "user" ? "you" : "agent", text: m.text })));
+        if (!d.ok) return;
+        if (d.heldOrder) {
+          const until = new Date(d.heldOrder.undoUntil).getTime();
+          setNow(Date.now());
+          setUndo({ orderId: d.heldOrder.id, until, total: Math.max(until - Date.now(), 1) });
+        }
+        if (d.cart) setCart(d.cart);
       })
       .catch(() => {});
-  }, []);
+    // Voice users land on the talk button, ready to press.
+    if (props.modes.voice && !props.modes.screenReader && props.modes.onboarded) setTimeout(() => talkRef.current?.focus(), 100);
+  }, [props.modes]);
 
   // Order updates from PayPal (charged, refunded...).
   useEffect(() => {
@@ -164,7 +179,7 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         const d = await (await fetch("/api/notifications")).json();
         if (!d.ok) return;
         for (const n of d.notifications as { text: string; orderId: string | null }[]) {
-          if (n.text.startsWith("Order placed")) continue; // already said when confirming
+          if (n.text.startsWith("Order placed") || n.text.startsWith("ऑर्डर हो गया")) continue; // already said when confirming
           add("note", n.text);
           say(n.text);
           setUndo((u) => (u && n.orderId === u.orderId ? null : u));
@@ -188,25 +203,10 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
     const left = undo.until - now;
     if (left <= 60_000 && left > 0 && !warnedOneMinute.current) {
       warnedOneMinute.current = true;
-      say("One minute left to cancel your order.");
+      say(T("oneMinute"));
     }
-  }, [now, undo, say]);
-
-  const handleEvents = useCallback(
-    (events: AgentEvent[]) => {
-      for (const e of events) {
-        if (e.type === "cart_updated") setCart(e.itemCount > 0 ? { itemCount: e.itemCount, total: e.total } : null);
-        if (e.type === "order_cancelled") setUndo((u) => (u?.orderId === e.orderId ? null : u));
-        if (e.type === "readback") {
-          setConfirmError(null);
-          setReadback(e);
-          // The read-back speaks for itself; then, in a voice conversation, we listen for "confirm".
-          if (voiceTurn.current || live.current.readAloud) say(e.blockedReason ? e.blockedReason : `${e.spoken} Say "confirm" to pay, or "change" to change something.`, { listenAfter: !e.blockedReason });
-        }
-      }
-    },
-    [say],
-  );
+    if (left <= 0) setUndo(null);
+  }, [now, undo, say, T]);
 
   const send = useCallback(
     async (message: string, how: "typed" | "voice" = "typed") => {
@@ -218,8 +218,8 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
       setText("");
       setCaption("");
       setBusy(true);
-      setStatus("Thinking…");
-      if (how === "typed") setAnnounce("Looking.");
+      setStatus(T("thinking"));
+      if (how === "typed") setAnnounce(T("looking"));
       try {
         const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: clean, conversationId }) });
         const d = await res.json().catch(() => ({ ok: false, error: "Open Aisle didn't answer properly. Please try again." }));
@@ -228,24 +228,35 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
           setConversationId(d.conversationId);
           session(CONV_KEY, d.conversationId);
         }
+        setSimple(d.mode === "basic");
         const events: AgentEvent[] = d.events ?? [];
         const products = events.flatMap((e) => (e.type === "products" ? e.items : []));
         add("agent", d.reply, products.length ? products : undefined);
-        const hasReadback = events.some((e) => e.type === "readback");
-        // The dialog reads itself; don't talk over it.
-        if (!hasReadback || !(voiceTurn.current || live.current.readAloud)) say(d.reply, { listenAfter: true });
-        handleEvents(events);
+        let rb: ReadBackData | null = null;
+        for (const e of events) {
+          if (e.type === "cart_updated") setCart(e.itemCount > 0 ? { itemCount: e.itemCount, total: e.total } : null);
+          if (e.type === "order_cancelled") setUndo((u) => (u?.orderId === e.orderId ? null : u));
+          if (e.type === "readback") rb = e;
+        }
+        if (rb) {
+          setConfirmError(null);
+          setReadback(rb);
+          // The read-back speaks for itself; then, in a voice conversation, we listen for "confirm".
+          say(rb.blockedReason ?? `${rb.spoken} ${T("readbackSay")}`, { listenAfter: !rb.blockedReason });
+        } else {
+          say(d.reply, { listenAfter: true });
+        }
       } catch (err) {
-        const msg = err instanceof Error && err.message ? err.message : "I couldn't reach Open Aisle. Check your connection and try again.";
+        const msg = err instanceof Error && err.message && err.message !== "Failed to fetch" ? err.message : T("connectionError");
         add("error", msg);
         say(msg);
       } finally {
         setBusy(false);
         setStatus("");
-        if (how === "typed") inputRef.current?.focus();
+        if (how === "typed" && !live.current.readback) inputRef.current?.focus();
       }
     },
-    [conversationId, add, handleEvents, say, speech],
+    [conversationId, add, say, speech, T],
   );
 
   const confirm = useCallback(async () => {
@@ -263,46 +274,87 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
       if (d.undoUntil) {
         const until = new Date(d.undoUntil).getTime();
         setNow(Date.now());
-        setUndo({ orderId: d.orderId, until, total: until - Date.now() });
+        setUndo({ orderId: d.orderId, until, total: Math.max(until - Date.now(), 1) });
       }
       add("note", d.message);
-      say(d.message);
-      inputRef.current?.focus();
+      say(d.message, { listenAfter: true });
+      setTimeout(() => (voiceTurn.current ? talkRef.current : inputRef.current)?.focus(), 0);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "The order wasn't placed. Nothing was charged.";
+      const msg = err instanceof Error && err.message && err.message !== "Failed to fetch" ? err.message : "The order wasn't placed. Nothing was charged.";
       setConfirmError(msg);
-      if (voiceTurn.current || live.current.readAloud) speech.speak(msg);
+      say(msg);
     } finally {
       setConfirming(false);
     }
-  }, [add, say, speech]);
+  }, [add, say]);
 
   const closeReadback = useCallback(
     (why: "change" | "dont") => {
       setReadback(null);
-      const msg = why === "change" ? "Okay. Tell me what to change." : "Okay, I won't order it. Your cart is still there.";
+      const msg = why === "change" ? T("change") : T("dontOrder");
       add("note", msg);
-      say(msg, { listenAfter: why === "change" });
-      setTimeout(() => inputRef.current?.focus(), 0);
+      say(msg, { listenAfter: true });
+      setTimeout(() => (voiceTurn.current ? talkRef.current : inputRef.current)?.focus(), 0);
     },
-    [add, say],
+    [add, say, T],
   );
 
   const cancelOrder = useCallback(async () => {
-    if (!undo) return;
+    const u = live.current.undo;
+    if (!u) return say(T("noCancel"));
     try {
-      const res = await fetch(`/api/orders/${undo.orderId}/cancel`, { method: "POST" });
+      const res = await fetch(`/api/orders/${u.orderId}/cancel`, { method: "POST" });
       const d = await res.json();
       if (!d.ok) throw new Error(d.error);
       setUndo(null);
       add("note", d.message);
-      say(d.message);
+      say(d.message, { listenAfter: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "I couldn't cancel. Please try again.";
+      const msg = err instanceof Error && err.message && err.message !== "Failed to fetch" ? err.message : T("cancelError");
       add("error", msg);
       say(msg);
     }
-  }, [undo, add, say]);
+  }, [add, say, T]);
+
+  /** Everything the person says or types goes through here first. */
+  const handleInput = useCallback(
+    (raw: string, how: "typed" | "voice") => {
+      const input = raw.trim();
+      if (!input) return;
+      voiceTurn.current = how === "voice";
+      const cmd = voiceCommand(input, lang);
+      const rb = live.current.readback;
+
+      if (cmd === "stop") {
+        voiceTurn.current = false;
+        return speech.silence();
+      }
+      if (cmd === "repeat") return say(rb ? rb.spoken : lastReply.current || T("nothingToRepeat"), { listenAfter: true });
+
+      if (rb) {
+        // While the read-back is open, only these answers make sense.
+        if (!rb.blockedReason && isConfirmPhrase(input, lang)) {
+          add("you", input);
+          return void confirm();
+        }
+        if (cmd === "change") return closeReadback("change");
+        if (cmd === "dont_order" || cmd === "cancel") return closeReadback("dont");
+        if (rb.blockedReason) return closeReadback("change");
+        return say(T("readbackHelp"), { listenAfter: true });
+      }
+      if (cmd === "cancel" && live.current.undo) {
+        add("you", input);
+        return void cancelOrder();
+      }
+      if (cmd === "help") {
+        add("you", input);
+        add("agent", T("help"));
+        return say(T("help"), { listenAfter: true });
+      }
+      void send(input, how);
+    },
+    [lang, speech, say, add, confirm, closeReadback, cancelOrder, send, T],
+  );
 
   /** Open the microphone. auto = we're continuing a voice conversation, so silence just ends it quietly. */
   const startListening = useCallback(
@@ -313,28 +365,13 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         onInterim: setCaption,
         onFinal: (heard) => {
           setCaption("");
-          const rb = live.current.readback;
-          // While the read-back is open, "confirm" means press Confirm.
-          if (rb && !rb.blockedReason && isConfirmPhrase(heard, props.lang)) {
-            voiceTurn.current = true;
-            add("you", heard);
-            void confirm();
-            return;
-          }
-          if (rb && STOP_WORDS.test(heard.trim())) {
-            voiceTurn.current = true;
-            add("you", heard);
-            closeReadback("dont");
-            return;
-          }
-          if (rb) setReadback(null);
-          void send(heard, "voice");
+          handleInput(heard, "voice");
         },
         onError: (code, message) => {
           setCaption("");
           if (auto && code === "no-speech") {
             voiceTurn.current = false;
-            setStatus("Press Space or the yellow button when you want to talk again.");
+            setStatus(T("talkAgain"));
             return;
           }
           setStatus(message);
@@ -345,28 +382,28 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         },
       });
     },
-    [speech, props.lang, add, confirm, closeReadback, send, say],
+    [speech, handleInput, say, T],
   );
   listenRef.current = startListening;
 
   /** The talk button: one control for talk, stop listening and stop talking. */
   const talk = useCallback(() => {
     if (speech.listening) return speech.stop();
-    if (speech.speaking) {
-      speech.silence();
-      return startListening(false);
-    }
+    if (speech.speaking) speech.silence();
     startListening(false);
   }, [speech, startListening]);
 
-  // Space to talk from anywhere; Escape stops listening or talking.
+  // Space to talk from anywhere it's free; Alt+T from anywhere at all (even in
+  // the text box or the read-back); Escape stops listening or talking.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === " " && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && spaceIsFree(e.target) && !live.current.readback) {
+      const altT = e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyT";
+      const space = e.key === " " && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && spaceIsFree(e.target) && !live.current.readback;
+      if (altT || space) {
         e.preventDefault();
         talk();
-      } else if (e.key === "Escape" && !live.current.readback && (speech.listening || speech.speaking)) {
-        e.preventDefault();
+      } else if (e.key === "Escape" && (speech.listening || speech.speaking)) {
+        if (!live.current.readback) e.preventDefault();
         if (speech.listening) speech.stop();
         speech.silence();
         voiceTurn.current = false;
@@ -376,56 +413,109 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
     return () => document.removeEventListener("keydown", onKey);
   }, [talk, speech]);
 
+  const updateModes = useCallback((patch: Partial<Modes>) => {
+    setModes((m) => ({ ...m, ...patch }));
+    void saveModes(patch);
+  }, []);
+
+  const choose = useCallback(
+    (how: "voice" | "reader" | "type") => {
+      const patch: Partial<Modes> =
+        how === "voice" ? { voice: true, screenReader: false, handsFree: true, onboarded: true } : how === "reader" ? { voice: false, screenReader: true, onboarded: true } : { voice: false, screenReader: false, onboarded: true };
+      updateModes(patch);
+      if (how === "voice") {
+        speech.speak(T("voiceWelcome"));
+        setTimeout(() => talkRef.current?.focus(), 50);
+      } else setTimeout(() => inputRef.current?.focus(), 50);
+    },
+    [updateModes, speech, T],
+  );
+
+  const newConversation = useCallback(() => {
+    session(CONV_KEY, null);
+    setConversationId(undefined);
+    setTurns([]);
+    setSimple(false);
+    say(T("newConversationDone"));
+    inputRef.current?.focus();
+  }, [say, T]);
+
   const left = undo ? undo.until - now : 0;
   const mode = speech.listening ? "listening" : busy ? "thinking" : speech.speaking ? "speaking" : "idle";
-  const talkLabel = {
-    listening: "Listening. Press to stop",
-    thinking: "Thinking",
-    speaking: "Speaking. Press to interrupt and talk",
-    idle: "Talk",
-  }[mode];
-  const dockLine = caption ? `“${caption}”` : status || (mode === "speaking" ? "Speaking… press the button or Escape to stop." : mode === "listening" ? "Listening…" : "");
+  const talkLabel = { listening: T("talkListening"), thinking: T("talkThinking"), speaking: T("talkSpeaking"), idle: T("talk") }[mode];
+  const dockLine = caption ? `“${caption}”` : status || (mode === "speaking" ? T("dockSpeaking") : mode === "listening" ? T("listening") : "");
 
   return (
     <div className="companion">
       <section className="convo" aria-labelledby="chat-title">
         <header className="convo__hello">
           <h1 id="chat-title">
-            Hi {props.name}.<span className="convo__ask"> What can I find for you?</span>
+            {T("greetHi", { name: props.name })}
+            <span className="convo__ask">{T("greetAsk")}</span>
           </h1>
-          {turns.length === 0 && <p className="convo__lede">Say it or type it, in your own words. I tell you only what the store&apos;s data says, and I never pay without your clear yes.</p>}
+          {turns.length === 0 && modes.onboarded && <p className="convo__lede">{T("lede")}</p>}
         </header>
+
+        {!modes.onboarded && (
+          <section className="panel choose" aria-labelledby="choose-title">
+            <h2 id="choose-title">{T("chooseTitle")}</h2>
+            <p className="hint">{T("chooseText")}</p>
+            <div className="choose__options">
+              <button type="button" className="btn choose__btn" onClick={() => choose("voice")}>
+                <span className="choose__label">{T("chooseVoice")}</span>
+                <span className="choose__hint">{T("chooseVoiceHint")}</span>
+              </button>
+              <button type="button" className="btn choose__btn" onClick={() => choose("reader")}>
+                <span className="choose__label">{T("chooseReader")}</span>
+                <span className="choose__hint">{T("chooseReaderHint")}</span>
+              </button>
+              <button type="button" className="btn choose__btn" onClick={() => choose("type")}>
+                <span className="choose__label">{T("chooseType")}</span>
+                <span className="choose__hint">{T("chooseTypeHint")}</span>
+              </button>
+            </div>
+          </section>
+        )}
 
         {!props.paypalConnected && (
           <p className="notice notice--warn">
-            PayPal isn&apos;t connected yet, so I can find things but can&apos;t order them. <a href="/settings#paypal">Connect PayPal in Settings</a>
+            {T("paypalMissing")} <a href="/settings#paypal">{T("paypalLink")}</a>
           </p>
+        )}
+
+        {simple && (
+          <section className="notice" aria-labelledby="simple-title">
+            <h2 id="simple-title" className="notice__title">
+              {T("simpleTitle")}
+            </h2>
+            <p>{T("simpleText")}</p>
+          </section>
         )}
 
         {turns.length === 0 ? (
           <div className="starters">
-            <h2 className="starters__title">Try asking</h2>
+            <h2 className="starters__title">{T("tryAsking")}</h2>
             <ul className="starters__list">
-              {SUGGESTIONS.map((s) => (
-                <li key={s}>
-                  <button type="button" className="chip" onClick={() => void send(s)} disabled={busy}>
-                    {s}
+              {STARTERS.map((k) => (
+                <li key={k}>
+                  <button type="button" className="chip" onClick={() => handleInput(T(k), "typed")} disabled={busy}>
+                    {T(k)}
                   </button>
                 </li>
               ))}
             </ul>
           </div>
         ) : (
-          <ol className="transcript" aria-label="Conversation">
+          <ol className="transcript" aria-label={T("conversation")}>
             {turns.map((t) => (
               <li key={t.id} className={`turn turn--${t.kind}`}>
-                <h3 className="visually-hidden">{HEADINGS[t.kind]}</h3>
+                <h3 className="visually-hidden">{T(t.kind)}</h3>
                 <div className="turn__bubble">
                   {t.text.split(/\n{2,}/).map((p, i) => (
                     <p key={i}>{p}</p>
                   ))}
                 </div>
-                {t.products && <ProductCards items={t.products} disabled={busy} onAsk={(q) => void send(q)} />}
+                {t.products && <ProductCards items={t.products} disabled={busy} onAsk={(q) => handleInput(q, "typed")} />}
               </li>
             ))}
             {busy && (
@@ -446,10 +536,11 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         <div className="dock">
           <div className="dock__row">
             <button
+              ref={talkRef}
               type="button"
               className={`talk talk--${mode}`}
               aria-pressed={speech.listening}
-              aria-keyshortcuts="Space"
+              aria-keyshortcuts="Space Alt+T"
               aria-describedby="talk-hint"
               onClick={talk}
               disabled={busy}
@@ -470,30 +561,32 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
               className="composer"
               onSubmit={(e) => {
                 e.preventDefault();
-                void send(text);
+                handleInput(text, "typed");
+                setText("");
               }}
             >
               <label htmlFor="ask" className="visually-hidden">
-                Your message
+                {T("messageLabel")}
               </label>
               <textarea
                 id="ask"
                 ref={inputRef}
                 rows={1}
                 value={text}
-                placeholder="Or type here…"
+                placeholder={T("placeholder")}
                 aria-describedby="ask-hint"
                 autoComplete="off"
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    void send(text);
+                    handleInput(text, "typed");
+                    setText("");
                   }
                 }}
               />
               <button type="submit" className="btn btn--primary composer__send" disabled={busy || !text.trim()}>
-                Send
+                {T("send")}
               </button>
             </form>
           </div>
@@ -503,18 +596,20 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
           </p>
 
           <div className="dock__prefs">
-            <label className="toggle">
-              <input type="checkbox" checked={readAloud} onChange={(e) => setReadAloud(e.target.checked)} />
-              <span>Read replies aloud, even when I type</span>
-            </label>
-            <label className="toggle">
-              <input type="checkbox" checked={handsFree} onChange={(e) => setHandsFree(e.target.checked)} />
-              <span>Keep listening after each reply</span>
-            </label>
+            {speech.canSpeak && (
+              <label className="toggle">
+                <input type="checkbox" checked={modes.voice} onChange={(e) => updateModes({ voice: e.target.checked })} />
+                <span>{T("readAloudToggle")}</span>
+              </label>
+            )}
+            {turns.length > 0 && (
+              <button type="button" className="btn btn--quiet" onClick={newConversation}>
+                {T("newConversation")}
+              </button>
+            )}
           </div>
           <p id="talk-hint" className="dock__hint">
-            {speech.supported ? "Press Space anywhere to talk. Escape stops. " : "Voice input needs Chrome, Edge or Safari. "}
-            <span id="ask-hint">In the text box, Enter sends and Shift+Enter adds a line.</span>
+            {speech.supported ? T("keysHint") : T("noVoiceHint")} <span id="ask-hint">{T("messageHint")}</span>
           </p>
         </div>
 
@@ -523,49 +618,58 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         </div>
       </section>
 
-      <aside className="side" aria-label="Order status">
+      <aside className="side" aria-label={T("side")}>
         {undo && left > 0 && (
           <section className="panel panel--undo" aria-labelledby="undo-title">
-            <h2 id="undo-title">You can still cancel</h2>
-            <p className="undo__time" aria-label={`Time left ${mmss(left)}`}>
+            <h2 id="undo-title">{T("undoTitle")}</h2>
+            <p className="undo__time" aria-label={`${T("timeLeft")} ${mmss(left)}`}>
               {mmss(left)}
             </p>
             <div className="undo__bar" aria-hidden="true">
               <span style={{ width: `${Math.max(0, Math.min(100, (left / undo.total) * 100))}%` }} />
             </div>
-            <p>PayPal is holding the money, not taking it. Say &ldquo;cancel that&rdquo;, or:</p>
-            <button type="button" className="btn btn--danger btn--block" onClick={cancelOrder}>
-              Cancel this order
+            <p>{T("undoHeld")}</p>
+            <button type="button" className="btn btn--danger btn--block" onClick={() => void cancelOrder()}>
+              {T("cancelOrder")}
             </button>
           </section>
         )}
         <section className="panel" aria-labelledby="cart-title">
-          <h2 id="cart-title">Your cart</h2>
+          <h2 id="cart-title">{T("cartTitle")}</h2>
           {cart ? (
             <>
               <p className="cart__total">{cart.total}</p>
-              <p>
-                {cart.itemCount} {cart.itemCount === 1 ? "item" : "items"}, with tax and delivery. I&apos;ll read the order back before anything is paid.
-              </p>
-              <button type="button" className="btn btn--primary btn--block" onClick={() => void send("I'd like to buy what's in my cart")} disabled={busy}>
-                Review and buy
+              <p>{T("cartItems", { count: `${cart.itemCount} ${cart.itemCount === 1 ? T("item") : T("items")}` })}</p>
+              <button type="button" className="btn btn--primary btn--block" onClick={() => handleInput("buy it", "typed")} disabled={busy}>
+                {T("reviewBuy")}
               </button>
             </>
           ) : (
-            <p className="panel__empty">Empty. Ask for something and say &ldquo;add it&rdquo;.</p>
+            <p className="panel__empty">{T("cartEmptyHint")}</p>
           )}
         </section>
         <section className="panel panel--quiet" aria-labelledby="promise-title">
-          <h2 id="promise-title">My promises</h2>
+          <h2 id="promise-title">{T("promisesTitle")}</h2>
           <ul className="promises">
-            <li>I never guess. Every price and size comes from the store&apos;s data.</li>
-            <li>I never pay without your clear yes to the exact order.</li>
-            <li>You can cancel during the undo window. Nothing is charged until it ends.</li>
+            <li>{T("promise1")}</li>
+            <li>{T("promise2")}</li>
+            <li>{T("promise3")}</li>
           </ul>
         </section>
       </aside>
 
-      <ReadBackDialog data={readback} busy={confirming} error={confirmError} onConfirm={confirm} onChange={() => closeReadback("change")} onCancel={() => closeReadback("dont")} onTalk={speech.supported ? () => startListening(false) : undefined} listening={speech.listening} />
+      <ReadBackDialog
+        data={readback}
+        busy={confirming}
+        error={confirmError}
+        lang={lang}
+        canTalk={speech.supported}
+        listening={speech.listening}
+        onTalk={() => startListening(false)}
+        onConfirm={() => void confirm()}
+        onChange={() => closeReadback("change")}
+        onCancel={() => closeReadback("dont")}
+      />
     </div>
   );
 }

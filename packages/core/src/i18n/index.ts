@@ -23,6 +23,7 @@ const strings = {
     "order.captured": "Done. You paid {amount} to {store}.",
     "order.tooLate": "It's too late to cancel. You were already charged, but I can start a return for you.",
     "order.refundStarted": "Return started. {store} will refund {amount} to your PayPal.",
+    "order.failed": "Your order from {store} didn't go through, so nothing was charged. You can order it again.",
     "confirm.phrase": "confirm",
     "ui.title": "Open Aisle",
   },
@@ -42,6 +43,7 @@ const strings = {
     "order.captured": "हो गया। आपने {store} को {amount} दिए।",
     "order.tooLate": "अब रद्द करने में देर हो गई है। पैसा कट चुका है, लेकिन मैं वापसी शुरू कर सकता हूँ।",
     "order.refundStarted": "वापसी शुरू हो गई। {store} आपके PayPal में {amount} लौटाएगा।",
+    "order.failed": "{store} से आपका ऑर्डर पूरा नहीं हो पाया, इसलिए कोई पैसा नहीं कटा। आप फिर से ऑर्डर कर सकते हैं।",
     "confirm.phrase": "पुष्टि",
     "ui.title": "ओपन आइल",
   },
@@ -60,7 +62,43 @@ export const CONFIRM_WORDS: Record<Lang, string[]> = {
   hi: ["पुष्टि", "पुष्टि करें", "हाँ पुष्टि", "ऑर्डर करो", "ऑर्डर कर दो"],
 };
 
+function normalise(text: string) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?,।]+/g, "")
+    .replace(/\s+/g, " ");
+}
+
 export function isConfirmPhrase(text: string, lang: Lang): boolean {
-  const said = text.trim().toLowerCase().replace(/[.!।]+$/, "");
+  const said = normalise(text);
   return [...CONFIRM_WORDS[lang], ...CONFIRM_WORDS.en].some((w) => said === w);
+}
+
+/**
+ * Short spoken commands the app handles itself, without the AI, so they are
+ * instant and can't be misunderstood. Each must match the WHOLE phrase:
+ * "cancel that" cancels; "don't cancel that" does not match anything.
+ */
+const COMMANDS: Record<"cancel" | "change" | "dont_order" | "repeat" | "stop" | "help", Record<Lang, string[]>> = {
+  cancel: {
+    en: ["cancel", "cancel that", "cancel it", "cancel my order", "cancel the order", "undo", "undo that"],
+    hi: ["रद्द", "रद्द करो", "रद्द कर दो", "ऑर्डर रद्द करो", "कैंसल", "कैंसल करो"],
+  },
+  change: { en: ["change", "change something", "change it", "go back"], hi: ["बदलो", "बदलना है", "वापस"] },
+  dont_order: { en: ["don't order", "do not order", "no", "no thanks", "not now"], hi: ["नहीं", "ऑर्डर मत करो", "अभी नहीं"] },
+  repeat: { en: ["repeat", "say that again", "repeat that", "what did you say", "again"], hi: ["फिर से बोलो", "दोबारा", "दोबारा बोलो"] },
+  stop: { en: ["stop", "stop talking", "be quiet", "quiet"], hi: ["रुको", "चुप", "बस"] },
+  help: { en: ["help", "what can i say", "what can you do"], hi: ["मदद", "क्या बोल सकते हैं"] },
+};
+
+export type VoiceCommand = keyof typeof COMMANDS;
+
+/** Which app command (if any) the person said. */
+export function voiceCommand(text: string, lang: Lang): VoiceCommand | null {
+  const said = normalise(text).replace(/’/g, "'");
+  for (const [cmd, words] of Object.entries(COMMANDS) as [VoiceCommand, Record<Lang, string[]>][]) {
+    if ([...words[lang], ...words.en].some((w) => said === w)) return cmd;
+  }
+  return null;
 }

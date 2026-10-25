@@ -4,7 +4,7 @@
  *
  * (Or set INLINE_WORKER=true and the web app does this itself.)
  */
-import "dotenv/config";
+import "@open-aisle/core/load-env";
 import { closeDb } from "@open-aisle/core";
 import { captureDueOrders } from "@open-aisle/core/orders";
 
@@ -14,7 +14,7 @@ async function loop() {
   console.log("Open Aisle local worker: checking for orders to charge every 5 seconds.");
   while (!stopping) {
     try {
-      const { captured, failed } = await captureDueOrders();
+      const { captured, failed } = await captureDueOrders(); // expired holds are final and not listed
       if (captured.length) console.log(`Charged: ${captured.join(", ")}`);
       if (failed.length) console.warn(`Will retry: ${failed.join(", ")}`);
     } catch (err) {

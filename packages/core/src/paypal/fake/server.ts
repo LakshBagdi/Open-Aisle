@@ -2,7 +2,7 @@
  * Run the fake PayPal on its own:  pnpm fake-paypal
  * Then set PAYPAL_API_BASE=http://127.0.0.1:4010 in .env.
  */
-import "dotenv/config";
+import "../../loadEnv";
 import { createFakePayPal } from "./fakePayPal";
 
 const port = Number(process.env.FAKE_PAYPAL_PORT ?? 4010);

@@ -7,7 +7,7 @@
  * barriers the merchant can fix. Check Channel3's terms before using their
  * images in a public demo.
  */
-import "dotenv/config";
+import "../src/loadEnv";
 import { eq } from "drizzle-orm";
 import { scanStoreBarriers } from "../src/barriers";
 import { channel3Available, factsFromChannel3, searchChannel3 } from "../src/catalog";

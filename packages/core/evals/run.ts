@@ -11,7 +11,7 @@
  * Uses the database in DATABASE_URL and re-seeds the demo stores, so point
  * it at a development database, never production.
  */
-import "dotenv/config";
+import "../src/loadEnv";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

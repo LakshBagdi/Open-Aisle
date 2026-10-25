@@ -96,6 +96,9 @@ importers:
       ag-studio-react:
         specifier: 3.0.0
         version: 3.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      dotenv:
+        specifier: ^18.0.8
+        version: 18.0.8
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(postgres@3.4.9)

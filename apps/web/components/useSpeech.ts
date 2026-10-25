@@ -3,8 +3,10 @@
  * Voice with the browser's own speech tools (free, no keys).
  *  - listen(): one utterance of speech recognition, with live captions while
  *    the person talks (Chrome, Edge and Safari support it)
- *  - speak():  read text aloud with the browser's voice, then call back, so
- *    the companion can start listening again for a hands-free conversation
+ *  - speak():  read text aloud, then call back, so the companion can start
+ *    listening again for a hands-free conversation. Long text is split into
+ *    sentences, because Chrome silently cuts off a single utterance after
+ *    about 15 seconds, which would chop the end off a read-back.
  *  - chime():  short tones so someone who can't see the screen knows when the
  *    microphone opens and closes
  */
@@ -38,24 +40,41 @@ function getRecognition(): (new () => Recognition) | undefined {
 }
 
 const ERRORS: Record<string, string> = {
-  "no-speech": "I didn't hear anything. Press Space or the yellow button and try again.",
+  "no-speech": "I didn't hear anything. Press the talk button and try again.",
   "not-allowed": "The microphone is blocked. Allow it in the browser's address bar, or type instead.",
   "service-not-allowed": "The microphone is blocked. Allow it in the browser's address bar, or type instead.",
   "audio-capture": "I can't find a microphone. Check it's plugged in, or type instead.",
   network: "Voice input needs an internet connection. Type instead, or try again.",
 };
 
-export function useSpeech(lang: "en" | "hi") {
+/** Split into sentence-sized pieces (max ~220 characters each). */
+export function speechChunks(text: string): string[] {
+  const sentences = text.replace(/\s+/g, " ").match(/[^.!?।]+[.!?।]*/g) ?? [text];
+  const out: string[] = [];
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (!s) continue;
+    const last = out.at(-1);
+    if (last && last.length + s.length < 220) out[out.length - 1] = `${last} ${s}`;
+    else out.push(s);
+  }
+  return out;
+}
+
+export function useSpeech(lang: "en" | "hi", rate = 1) {
   const [supported, setSupported] = useState(false);
+  const [canSpeak, setCanSpeak] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const rec = useRef<Recognition | null>(null);
   const audio = useRef<AudioContext | null>(null);
+  const speakToken = useRef(0);
   const locale = lang === "hi" ? "hi-IN" : "en-US";
 
-  useEffect(() => setSupported(Boolean(getRecognition())), []);
-  // Some browsers load voices late; asking once warms the list up.
   useEffect(() => {
+    setSupported(Boolean(getRecognition()));
+    setCanSpeak(typeof window !== "undefined" && "speechSynthesis" in window);
+    // Some browsers load voices late; asking once warms the list up.
     window.speechSynthesis?.getVoices();
   }, []);
 
@@ -84,6 +103,7 @@ export function useSpeech(lang: "en" | "hi") {
   }, []);
 
   const silence = useCallback(() => {
+    speakToken.current++;
     window.speechSynthesis?.cancel();
     setSpeaking(false);
   }, []);
@@ -91,7 +111,7 @@ export function useSpeech(lang: "en" | "hi") {
   const listen = useCallback(
     (h: ListenHandlers) => {
       const Ctor = getRecognition();
-      if (!Ctor) return h.onError("unsupported", "Voice input isn't available in this browser. Try Chrome or Edge, or type instead.");
+      if (!Ctor) return h.onError("unsupported", "Voice input isn't available in this browser. Try Chrome, Edge or Safari, or type instead.");
       silence();
       rec.current?.abort();
       const r = new Ctor();
@@ -103,6 +123,7 @@ export function useSpeech(lang: "en" | "hi") {
       let failed = false;
       r.onresult = (e) => {
         let interim = "";
+        finalText = "";
         for (let i = 0; i < e.results.length; i++) {
           const res = e.results[i]!;
           if (res.isFinal) finalText += res[0].transcript;
@@ -141,28 +162,35 @@ export function useSpeech(lang: "en" | "hi") {
 
   const speak = useCallback(
     (text: string, onDone?: () => void) => {
-      if (typeof window === "undefined" || !window.speechSynthesis) return onDone?.();
+      if (typeof window === "undefined" || !window.speechSynthesis || !text.trim()) return onDone?.();
+      const token = ++speakToken.current;
       window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = locale;
-      u.rate = 1;
       const voices = window.speechSynthesis.getVoices();
-      const voice = voices.find((v) => v.lang === locale && /natural|neural|google/i.test(v.name)) ?? voices.find((v) => v.lang === locale);
-      if (voice) u.voice = voice;
-      let done = false;
-      const finish = (completed: boolean) => {
-        if (done) return;
-        done = true;
-        setSpeaking(false);
-        if (completed) onDone?.();
-      };
-      u.onend = () => finish(true);
-      u.onerror = (e) => finish(e.error !== "interrupted" && e.error !== "canceled");
+      const voice = voices.find((v) => v.lang === locale && /natural|neural|google/i.test(v.name)) ?? voices.find((v) => v.lang === locale) ?? voices.find((v) => v.lang.startsWith(lang));
+      const chunks = speechChunks(text);
       setSpeaking(true);
-      window.speechSynthesis.speak(u);
+      chunks.forEach((chunk, i) => {
+        const u = new SpeechSynthesisUtterance(chunk);
+        u.lang = locale;
+        u.rate = Math.min(2, Math.max(0.6, rate));
+        if (voice) u.voice = voice;
+        if (i === chunks.length - 1) {
+          u.onend = () => {
+            if (token !== speakToken.current) return; // interrupted by newer speech
+            setSpeaking(false);
+            onDone?.();
+          };
+          u.onerror = (e) => {
+            if (token !== speakToken.current) return;
+            setSpeaking(false);
+            if (e.error !== "interrupted" && e.error !== "canceled") onDone?.();
+          };
+        }
+        window.speechSynthesis.speak(u);
+      });
     },
-    [locale],
+    [locale, lang, rate],
   );
 
-  return { supported, listening, speaking, listen, stop, speak, silence, chime };
+  return { supported, canSpeak, listening, speaking, listen, stop, speak, silence, chime };
 }

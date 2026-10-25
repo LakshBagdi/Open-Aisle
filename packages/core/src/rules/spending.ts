@@ -65,15 +65,15 @@ export async function checkSpending(userId: string, storeId: string, totalCents:
   if (!same) return { ok: false, reason: "Your spending limits were changed without being re-confirmed, so I won't pay." };
 
   if (signed.allowedStoreIds.length > 0 && !signed.allowedStoreIds.includes(storeId)) {
-    return { ok: false, reason: "This store isn't on your list of allowed stores." };
+    return { ok: false, reason: "This store isn't on your list of allowed stores. You can change that in Settings." };
   }
   if (totalCents > signed.perOrderCents) {
-    return { ok: false, reason: `This order is ${formatMoney(totalCents, currency)}, which is over your limit of ${formatMoney(signed.perOrderCents, currency)} per order.` };
+    return { ok: false, reason: `This order is ${formatMoney(totalCents, currency)}, which is over your limit of ${formatMoney(signed.perOrderCents, currency)} per order. Take something out of your cart, or raise the limit in Settings.` };
   }
   const spent = await spentThisMonth(userId, now);
   if (spent + totalCents > signed.monthlyCents) {
     const left = Math.max(0, signed.monthlyCents - spent);
-    return { ok: false, reason: `This order would go over your monthly limit. You have ${formatMoney(left, currency)} left this month.` };
+    return { ok: false, reason: `This order would go over your monthly limit. You have ${formatMoney(left, currency)} left this month. You can change the limit in Settings.` };
   }
   return { ok: true, rules: signed };
 }

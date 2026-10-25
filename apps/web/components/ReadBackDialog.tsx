@@ -8,8 +8,11 @@
  *    order is read first and a stray Enter can't pay.
  *  - aria-describedby points at the order text, so screen readers read it all.
  *  - The Confirm button says what it does and how much: "Confirm and pay $59.53".
+ *  - "Answer by voice" works inside the dialog (the rest of the page is
+ *    blocked while it's open), so voice users can say "confirm" here.
  */
 import { useEffect, useRef } from "react";
+import { ui, type Lang } from "./uiText";
 
 export type ReadBackData = {
   cartId: string;
@@ -27,15 +30,17 @@ export function ReadBackDialog(props: {
   data: ReadBackData | null;
   busy: boolean;
   error: string | null;
+  lang?: Lang;
+  canTalk?: boolean;
+  listening?: boolean;
+  onTalk?: () => void;
   onConfirm: () => void;
   onChange: () => void;
   onCancel: () => void;
-  /** Voice: open the microphone to answer ("confirm", "change", "no"). */
-  onTalk?: () => void;
-  listening?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const { data } = props;
+  const lang = props.lang ?? "en";
 
   useEffect(() => {
     const d = ref.current;
@@ -63,11 +68,11 @@ export function ReadBackDialog(props: {
       {data && (
         <>
           <div className="readback__band">
-            <h2 id="readback-title">Check your order</h2>
+            <h2 id="readback-title">{ui(lang, "rbTitle")}</h2>
           </div>
           <div className="readback__body">
             <div id="readback-body">
-              <p className="readback__store">From {data.storeName}</p>
+              <p className="readback__store">{ui(lang, "rbFrom", { store: data.storeName })}</p>
               <ul className="readback__lines">
                 {data.lines.map((l) => (
                   <li key={l}>{l}</li>
@@ -85,31 +90,29 @@ export function ReadBackDialog(props: {
             <div className="btn-row">
               {data.blockedReason ? (
                 <button type="button" className="btn btn--primary" onClick={props.onChange}>
-                  OK, go back
+                  {ui(lang, "rbBack")}
                 </button>
               ) : (
                 <>
-                  <button type="button" className="btn btn--primary" onClick={props.onConfirm} disabled={props.busy} aria-describedby="readback-voice-hint">
-                    {props.busy ? "Placing order…" : `Confirm and pay ${total}`}
+                  <button type="button" className="btn btn--primary" onClick={props.onConfirm} disabled={props.busy} aria-describedby={props.canTalk ? "readback-voice-hint" : undefined}>
+                    {props.busy ? ui(lang, "rbPlacing") : ui(lang, "rbConfirm", { total })}
                   </button>
                   <button type="button" className="btn" onClick={props.onChange} disabled={props.busy}>
-                    Change something
+                    {ui(lang, "rbChange")}
                   </button>
                   <button type="button" className="btn btn--danger" onClick={props.onCancel} disabled={props.busy}>
-                    Don't order
+                    {ui(lang, "rbDont")}
                   </button>
                 </>
               )}
             </div>
-            {!data.blockedReason && (
+            {!data.blockedReason && props.canTalk && props.onTalk && (
               <div className="readback__voice">
-                {props.onTalk && (
-                  <button type="button" className="talk-mini" aria-pressed={props.listening} onClick={props.onTalk} disabled={props.busy}>
-                    {props.listening ? "Listening…" : "Answer by voice"}
-                  </button>
-                )}
+                <button type="button" className="talk-mini" aria-pressed={Boolean(props.listening)} onClick={props.onTalk} disabled={props.busy}>
+                  {props.listening ? ui(lang, "rbVoiceListening") : ui(lang, "rbVoice")}
+                </button>
                 <p id="readback-voice-hint" className="hint">
-                  You can say &ldquo;confirm&rdquo; to pay, &ldquo;change&rdquo; to change something, or &ldquo;no&rdquo; to not order.
+                  {ui(lang, "rbVoiceHint")}
                 </p>
               </div>
             )}

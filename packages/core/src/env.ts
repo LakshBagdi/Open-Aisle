@@ -43,7 +43,11 @@ export type Env = z.infer<typeof schema>;
 let cached: Env | undefined;
 
 export function env(): Env {
-  if (!cached) cached = schema.parse(process.env);
+  if (!cached) {
+    // An empty line like "CONFIRM_TOKEN_SECRET=" in .env means "not set", so the default applies.
+    const set = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined && v.trim() !== ""));
+    cached = schema.parse(set);
+  }
   return cached;
 }
 

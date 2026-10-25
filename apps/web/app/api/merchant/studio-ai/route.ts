@@ -9,6 +9,7 @@ import { aiRuns } from "@open-aisle/core/db/schema";
 import { runStudioTurn, type StudioRequest } from "@open-aisle/core/studio";
 import { z } from "zod";
 import { fail, handleError, ok, sameOrigin } from "@/lib/http";
+import { rateLimited } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,6 +28,7 @@ const Body = z.object({
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return fail("Request blocked.", 403);
+  if (rateLimited(req, "studio", 30)) return fail("That's a lot of requests in a minute. Please wait a moment and try again.", 429);
   try {
     const raw = await req.text();
     if (raw.length > MAX_BODY) return fail("That request is too large.", 413);

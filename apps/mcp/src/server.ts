@@ -9,7 +9,7 @@
  * Environment: the same .env as the app. OPEN_AISLE_USER_ID picks the shopper
  * (defaults to the demo shopper Asha); APP_URL is where confirm links point.
  */
-import "dotenv/config";
+import "@open-aisle/core/load-env";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { defaultModel } from "@open-aisle/core/agent";
 import { aiEnabled, env } from "@open-aisle/core";

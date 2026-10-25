@@ -19,8 +19,12 @@ import type { Lang } from "../i18n";
 import { checkGrounding, removeUngroundedSentences, toSpeakable, type GroundingResult } from "./grounding";
 import { PROMPT_VERSION, systemPrompt } from "./prompt";
 import { createTools, type AgentEvent } from "./tools";
+import { basicTurn } from "./basic";
+import { describeAiError } from "./errors";
 
-export class AgentUnavailableError extends Error {}
+export class AgentUnavailableError extends Error {
+  name = "AgentUnavailableError";
+}
 
 /** Used when AGENT_MODEL still names a Claude model but another provider is chosen. */
 const PROVIDER_DEFAULT_MODEL = { google: "gemini-3.8-flash", groq: "llama-3.3-70b-versatile" } as const;
@@ -65,6 +69,8 @@ export type TurnResult = {
   reply: string;
   events: AgentEvent[];
   grounding: GroundingResult;
+  /** "ai" = Claude answered; "basic" = simple mode (no key, or the AI service was unreachable). */
+  mode: "ai" | "basic";
 };
 
 const HISTORY_TURNS = 12;
@@ -80,7 +86,8 @@ async function loadHistory(conversationId: string): Promise<ModelMessage[]> {
   for (const m of rows.reverse()) {
     if (m.role === "user") history.push({ role: "user", content: m.text });
     else if (m.role === "assistant") {
-      const stored = m.toolCalls as ModelMessage[];
+      // Simple-mode turns store a small memory object, not model messages; skip those.
+      const stored = (m.toolCalls as unknown[]).filter((x): x is ModelMessage => typeof x === "object" && x !== null && "role" in x);
       if (stored.length > 0) history.push(...stored);
       else history.push({ role: "assistant", content: m.text });
     }
@@ -103,7 +110,14 @@ export async function runTurn(opts: { userId: string; text: string; conversation
   const [user] = await db.select().from(users).where(eq(users.id, opts.userId)).limit(1);
   if (!user) throw new Error("User not found");
   const lang: Lang = user.language;
-  const model = opts.model ?? defaultModel();
+  let model: LanguageModel | undefined = opts.model;
+  if (!model) {
+    try {
+      model = defaultModel();
+    } catch (err) {
+      if (!(err instanceof AgentUnavailableError)) throw err;
+    }
+  }
 
   let conversationId = opts.conversationId;
   if (!conversationId) {
@@ -111,8 +125,14 @@ export async function runTurn(opts: { userId: string; text: string; conversation
     conversationId = c!.id;
   } else {
     const [c] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-    if (!c || c.userId !== user.id) throw new Error("Conversation not found");
+    // A conversation from an old session (or another person): start a fresh one instead of failing.
+    if (!c || c.userId !== user.id) {
+      const [fresh] = await db.insert(conversations).values({ userId: user.id }).returning();
+      conversationId = fresh!.id;
+    }
   }
+
+  if (!model) return basicReply({ userId: user.id, lang, conversationId, text: opts.text });
 
   const history = await loadHistory(conversationId);
   const now = opts.now ?? new Date();
@@ -132,7 +152,16 @@ export async function runTurn(opts: { userId: string; text: string; conversation
     generateText({ model, instructions, messages: msgs, tools, stopWhen: isStepCount(8), maxOutputTokens: 800, temperature: 0.2 });
 
   const input: ModelMessage[] = [...history, { role: "user", content: opts.text }];
-  let result = await call(input);
+  let result: Awaited<ReturnType<typeof call>>;
+  try {
+    result = await call(input);
+  } catch (err) {
+    // The AI service is down or refused: keep shopping working in simple mode.
+    if (events.length > 0) throw err; // a tool already acted; don't repeat it
+    // describeAiError logs a one-line reason (bad key, retired model, rate limit) for the developer.
+    if (!describeAiError(err)) console.error("AI turn failed, using simple mode:", err instanceof Error ? err.message : err);
+    return basicReply({ userId: user.id, lang, conversationId, text: opts.text, note: true });
+  }
   let newMessages: ModelMessage[] = [...result.responseMessages];
   let reply = toSpeakable(result.text);
   let grounding = checkGrounding(reply, factsFrom([...history, ...newMessages]), orderFacts.seen);
@@ -172,7 +201,22 @@ export async function runTurn(opts: { userId: string; text: string; conversation
     durationMs: Date.now() - started,
   });
 
-  return { conversationId, reply, events, grounding };
+  return { conversationId, reply, events, grounding, mode: "ai" };
+}
+
+/** A turn in simple mode (see basic.ts), stored like any other turn. */
+async function basicReply(o: { userId: string; lang: Lang; conversationId: string; text: string; note?: boolean }): Promise<TurnResult> {
+  const events: AgentEvent[] = [];
+  const turn = await basicTurn({ ...o, events });
+  const reply = o.note ? `${o.lang === "hi" ? "AI अभी उपलब्ध नहीं है, इसलिए मैं सरल मोड में हूँ।" : "The AI isn't reachable right now, so I'm in simple mode."} ${turn.reply}` : turn.reply;
+  const grounding = { passed: true, problems: [] };
+  await getDb()
+    .insert(messages)
+    .values([
+      { conversationId: o.conversationId, role: "user", text: o.text },
+      { conversationId: o.conversationId, role: "assistant", text: reply, toolCalls: [turn.memory], groundingCheck: grounding },
+    ]);
+  return { conversationId: o.conversationId, reply, events, grounding, mode: "basic" };
 }
 
 export async function conversationMessages(userId: string, conversationId: string) {

@@ -50,5 +50,8 @@ services:
       # when their undo window ends. Capture is idempotent, so both can run.
       - key: INLINE_WORKER
         value: "true"
+      # Each visitor gets their own demo shopper (judges don't share a cart).
+      - key: DEMO_SESSIONS
+        value: per-visitor
       - key: NODE_OPTIONS
         value: --max-old-space-size=3072

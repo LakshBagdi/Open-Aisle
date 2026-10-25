@@ -6,25 +6,24 @@
  *   pnpm e2e                  (terminal 3)
  *
  * Needs a Chromium: `npx playwright install chromium`, or set CHROME_PATH.
- * Uses the same database as the app (DATABASE_URL in packages/core/.env), and
- * re-seeds the demo data first.
+ * Uses the same database as the app (DATABASE_URL in the root .env). For a
+ * clean run, reset the demo data first with `pnpm db:seed`.
  *
  * Only /api/chat is stubbed (so no Anthropic key is needed): the stub returns
  * a read-back event for a REAL cart, and everything after that (confirm, PayPal
  * hold, undo, cancel) runs for real against the fake PayPal.
  */
-import { config } from "dotenv";
+import "@open-aisle/core/load-env";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
-config({ path: join(dirname(fileURLToPath(import.meta.url)), "../../packages/core/.env") });
 
 import { AxeBuilder } from "@axe-core/playwright";
 import { and, eq } from "drizzle-orm";
 import { chromium, type Page } from "playwright";
 import { closeDb, getDb } from "@open-aisle/core";
 import { addToCart } from "@open-aisle/core/cart";
-import { carts, paypalVault, products, stores } from "@open-aisle/core/db/schema";
+import { carts, paypalVault, products, stores, users } from "@open-aisle/core/db/schema";
 import { buildReadBack } from "@open-aisle/core/orders";
 import { cartFingerprint } from "@open-aisle/core/rules";
 
@@ -62,6 +61,21 @@ async function main() {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
+
+  // Start as a first-time visitor.
+  const [asha] = await getDb().select().from(users).where(eq(users.id, USER));
+  await getDb().update(users).set({ modes: { ...asha!.modes, onboarded: false, voice: false, handsFree: false } }).where(eq(users.id, USER));
+
+  console.log("First visit: choosing how to use Open Aisle");
+  await page.goto(BASE + "/", { waitUntil: "networkidle" });
+  const chooser = page.getByRole("heading", { name: "How would you like to use Open Aisle?" });
+  check(await chooser.isVisible(), "a first-time visitor is asked how they want to use it (voice, screen reader, or type)");
+  await axe(page, "/ with the first-visit question");
+  await page.getByRole("button", { name: /Read and type/ }).click();
+  await page.waitForTimeout(500);
+  await page.reload({ waitUntil: "networkidle" });
+  check(!(await chooser.isVisible()), "the choice is remembered");
+  check(await page.getByRole("checkbox", { name: "Read replies aloud" }).isVisible(), "spoken replies can be switched on right next to the message box");
 
   console.log("Accessibility");
   for (const path of ["/", "/orders", "/settings", "/merchant", "/merchant/board", "/merchant/insights", "/merchant/developers"]) {
@@ -105,6 +119,45 @@ async function main() {
   const state = (await (await fetch(`${PAYPAL}/fake/state`)).json()) as { authorizations: { status: string; amount: { value: string } }[] };
   check(state.authorizations.some((a) => a.status === "VOIDED" && a.amount.value === "59.53"), "cancel voided the $59.53 hold at PayPal");
   await page.unroute("**/api/chat");
+
+  console.log("Simple mode (no AI key): a whole purchase by typing, with nothing stubbed");
+  await prepareCart(); // empties the cart (and disconnects PayPal, so connect again)
+  await page.goto(`${BASE}/settings`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Connect PayPal" }).click();
+  await page.waitForURL(/fake\/approve/);
+  await page.getByRole("button", { name: "Agree and continue" }).click();
+  await page.waitForURL(/settings\?paypal=connected/);
+  await page.getByRole("checkbox", { name: /Read replies aloud/ }).waitFor();
+  await page.goto(BASE + "/", { waitUntil: "networkidle" });
+  const ask = async (words: string) => {
+    const reply = page.waitForResponse((r) => r.url().endsWith("/api/chat") && r.request().method() === "POST");
+    await page.getByLabel("Your message").fill(words);
+    await page.getByLabel("Your message").press("Enter");
+    return (await (await reply).json()) as { ok: boolean; reply: string; mode: string };
+  };
+  // Start from an empty cart, whatever earlier runs left behind.
+  await getDb().update(carts).set({ status: "abandoned" }).where(and(eq(carts.userId, USER), eq(carts.status, "open")));
+  const first = await ask("trail running shoes under 60");
+  if (first.mode !== "basic") {
+    console.log("  (skipped: an AI key is set, so the app isn't in simple mode)");
+  } else {
+    check(first.reply.includes("Number 1: Trail Runner 2"), "search answers with numbered results from store data");
+    check(await page.getByRole("heading", { name: "Simple mode" }).isVisible(), "the page explains simple mode and what to say");
+    const added = await ask("add number 1, size 9");
+    check(added.reply.includes("Added the Trail Runner 2, size 9"), "“add number 1, size 9” fills the cart");
+    await ask("buy it");
+    await page.getByRole("dialog", { name: "Check your order" }).waitFor();
+    check(true, "“buy it” opens the read-back");
+    // Typing "confirm" while the read-back is open presses Confirm (same as saying it).
+    await page.keyboard.press("Tab");
+    await page.getByRole("dialog").getByRole("button", { name: /Confirm and pay/ }).click();
+    await page.getByRole("heading", { name: "You can still cancel" }).waitFor();
+    await page.getByLabel("Your message").fill("cancel that");
+    await page.getByLabel("Your message").press("Enter");
+    await page.getByText("Cancelled. Nothing was charged.").last().waitFor();
+    check(true, "“cancel that” cancels inside the undo window, without the AI");
+    await page.screenshot({ path: join(OUT, "2b-simple-mode.png"), fullPage: true });
+  }
 
   console.log("Store: fix board");
   await page.goto(`${BASE}/merchant/board`, { waitUntil: "networkidle" });

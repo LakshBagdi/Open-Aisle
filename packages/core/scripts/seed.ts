@@ -4,7 +4,7 @@
  *
  *   pnpm db:seed
  */
-import "dotenv/config";
+import "../src/loadEnv";
 import { eq, inArray } from "drizzle-orm";
 import { scanStoreBarriers } from "../src/barriers";
 import { closeDb, getDb } from "../src/db";

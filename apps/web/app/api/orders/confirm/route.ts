@@ -12,6 +12,7 @@ import { placeOrder } from "@open-aisle/core/orders";
 import { issueConfirmation } from "@open-aisle/core/rules";
 import { z } from "zod";
 import { fail, handleError, ok, sameOrigin } from "@/lib/http";
+import { rateLimited } from "@/lib/rateLimit";
 import { currentUserId } from "@/lib/session";
 import { scheduleCapture } from "@/lib/workflows";
 
@@ -21,6 +22,7 @@ const Body = z.object({ cartId: z.string().uuid(), fingerprint: z.string().regex
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return fail("Request blocked.", 403);
+  if (rateLimited(req, "confirm", 10)) return fail("That's a lot of requests in a minute. Please wait a moment and try again.", 429);
   try {
     const { cartId, fingerprint } = Body.parse(await req.json());
     const userId = await currentUserId();

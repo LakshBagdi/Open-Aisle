@@ -20,6 +20,18 @@ Other shopping agents are built for people who can see what the agent did. Open 
 2. **Never pay without a clear yes.** The agent has *no tool that pays*. When the person wants to buy, code builds a read-back of the exact cart. Only the person's Confirm (button, or the spoken word "confirm" while the read-back is open) creates a one-time confirmation token. The token is tied to a fingerprint of the exact cart heard, expires in 2 minutes, works once, and checks signed spending limits.
 3. **Mistakes can be undone.** Payment is a PayPal *authorization hold*, not a charge. During the undo window (default 10 minutes) "cancel that" voids the hold and nothing is charged. When the window ends, a Render Workflows task captures it.
 
+## Three ways to use it
+
+On the first visit Open Aisle asks how you want to use it (change it any time in Settings):
+
+- **Talk and listen.** Press **Talk** (or **Alt+T** from anywhere, even inside the read-back), say what you need, and hear the answer. A rising tone means "listening", a falling one "got it". **Hands-free** listens again after every reply, so a whole purchase needs no buttons: "black running shoes size 9" → "add number 1" → "buy it" → "confirm" → "cancel that". Short commands (confirm, change, don't order, cancel that, repeat, stop, help) are handled instantly in the browser, not by the AI. Speaking speed is adjustable.
+- **Screen reader.** Replies go to a live region your screen reader (NVDA, JAWS, VoiceOver, TalkBack) reads; Open Aisle stays quiet so there aren't two voices. Every page passes WCAG 2.2 AA checks.
+- **Read and type.** Large Atkinson Hyperlegible text, Enter to send.
+
+If you speak a request, the answer is spoken even with read-aloud off, unless you use a screen reader. Voice uses the browser's own speech (Chrome, Edge, Safari); no audio leaves the browser except the recognised words.
+
+**Simple mode:** with no Anthropic key, or if the AI service is down, shopping still works with short requests ("running shoes under 60", "tell me about number 2", "add number 1, size 9", "buy it", "cancel that"). Same tools, same read-back, same trust layer.
+
 ## What's in it
 
 | For | Page / part | What it does |
@@ -56,6 +68,7 @@ All of these go through the official **PayPal Server SDK** (`@paypal/paypal-serv
 | Claude inside AG Studio | The insights dashboard's AI assistant: AG Studio's agents send each step to our server, which runs it on Claude and returns tool calls for the dashboard |
 | Grounding check (our code) | Blocks any price or measurement not found in a tool result |
 | Browser Web Speech API | Voice input and spoken replies, no extra service |
+| Simple mode (our code) | Rule-based understanding of short requests when no AI is available, using the same tools |
 
 ## Sponsor tools
 
@@ -67,23 +80,24 @@ All of these go through the official **PayPal Server SDK** (`@paypal/paypal-serv
 
 ## Run it
 
-Requirements: Node 22+, pnpm 10, PostgreSQL 16.
+Requirements: Node 22+, pnpm 10, PostgreSQL 16, running. The default `.env` expects user, password and database all named `openaisle`; change `DATABASE_URL` if yours differ.
 
 ```bash
 pnpm install
-cp .env.example .env && cp .env apps/web/.env && cp .env packages/core/.env
-# edit .env: DATABASE_URL, ANTHROPIC_API_KEY, and PayPal sandbox keys
-pnpm db:migrate
-pnpm db:seed           # 2 demo stores, 15 products, demo shopper "Asha", demo Merchant API keys
-pnpm dev               # http://localhost:3000
-pnpm demo:activity     # optional: simulated shoppers, so the store pages have numbers
+pnpm demo              # http://localhost:3000
 ```
+
+That's it. `pnpm demo` makes `.env` from `.env.example` if you don't have one, sets up and fills the database (2 demo stores, 15 products, demo shopper "Asha"), and starts the app together with a fake PayPal, so it works with **no keys at all**. Without an AI key the assistant runs in *simple mode*: it understands short requests ("running shoes under 60", "add number 1", "buy it", "cancel that"); add a key to `.env` for full conversation.
+
+Everything lives in one `.env` at the top of the repo. To use the real PayPal sandbox instead of the fake, put your sandbox `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` in `.env` and remove the `PAYPAL_API_BASE` line. Different database? Change `DATABASE_URL`.
+
+Other commands: `pnpm db:setup` (set up and refill the database only), `pnpm demo:activity` (simulated shoppers, so the store pages have numbers), `pnpm fake-paypal` and `pnpm dev` (run the two parts yourself).
+
+The fake PayPal speaks the same API as the sandbox for every call Open Aisle makes, and is just as strict: totals must add up, voided holds can't be captured, request ids are idempotent, and it sends webhooks.
 
 **No Claude key?** Gemini and Groq both have free tiers. Set `AI_PROVIDER=google`, `GOOGLE_GENERATIVE_AI_API_KEY=...` and `AGENT_MODEL=gemini-3.8-flash` (or `AI_PROVIDER=groq`, `GROQ_API_KEY=...`). Claude is still the best fit: free-tier models are weaker at following the trust rules and have tight rate limits. If the AI fails, Open Aisle now says why (retired model, bad key, too many requests) and logs a line starting `[open-aisle] AI provider error`.
 
 **Voice:** press the yellow button, or Space anywhere on the Shop page, and talk. If you talk, Open Aisle answers out loud and then listens again, so a whole purchase, including "confirm", can happen without the screen. Silence ends the conversation; Escape stops it. Voice input works in Chrome, Edge and Safari.
-
-**No PayPal keys?** Run `pnpm fake-paypal` in another terminal and set `PAYPAL_API_BASE=http://127.0.0.1:4010` and `PAYPAL_WEBHOOK_ID=FAKE-WEBHOOK-ID`. The fake speaks the same API as the sandbox for every call Open Aisle makes, and is just as strict: totals must add up, voided holds can't be captured, request ids are idempotent, and it sends webhooks.
 
 Then: Settings → Connect PayPal → approve → Shop → "black running shoes, size 9, under 60 dollars" → "buy them" → Confirm → wait or say "cancel that".
 
@@ -104,10 +118,11 @@ Full description: [`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)
 ## Tests and evals
 
 ```bash
-pnpm test    # 48 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
+pnpm test    # 59 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
              # the Merchant API, the AG Studio ↔ Claude adapter, the OpenAPI file vs the real routes, MCP checkout
 pnpm eval    # real-model evals (needs ANTHROPIC_API_KEY): trust traps, quality, Hindi → packages/core/evals/results.md
-pnpm e2e     # 21 real-browser checks (app + fake PayPal running): axe on every page, the full purchase with
+pnpm e2e     # 29 real-browser checks (with `pnpm demo` running; `pnpm db:seed` first for a clean run): axe on every page, first-visit choice, a full
+             # simple-mode purchase with nothing stubbed, the full purchase with
              # keyboard checks, PayPal hold and undo, the fix board, the dashboard, an outside agent's confirm link
 ```
 
@@ -132,7 +147,8 @@ apimatic        APIMatic project for the Merchant API SDKs
 
 ## Limits (honest)
 
-- One demo shopper; real sign-in is out of scope (the confirm page and store pages assume the demo accounts).
+- No real sign-in. Locally everyone is the demo shopper Asha; on the hosted demo (`DEMO_SESSIONS=per-visitor`) each browser gets its own copy of Asha, so visitors don't share a cart or limits. Store pages have no login.
+- Voice input needs Chrome, Edge or Safari (Firefox can still hear replies and type).
 - Demo products are original items with drawn images; real catalogs come from Channel3.
 - PayPal's Store Sync and Agent Ready need an access request; our cart follows the shape of their cart operations.
 - PayPal's approval page appears once when connecting; a helper can do this step.
