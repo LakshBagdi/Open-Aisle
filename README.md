@@ -80,7 +80,7 @@ All of these go through the official **PayPal Server SDK** (`@paypal/paypal-serv
 
 ## Run it
 
-Requirements: Node 22+, pnpm 10, PostgreSQL 16 (running, with a database called `openaisle`).
+Requirements: Node 22+, pnpm 10, PostgreSQL 16, running. The default `.env` expects user, password and database all named `openaisle`; change `DATABASE_URL` if yours differ.
 
 ```bash
 pnpm install
