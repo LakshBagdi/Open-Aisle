@@ -24,7 +24,7 @@ Other shopping agents are built for people who can see what the agent did. Open 
 
 On the first visit Open Aisle asks how you want to use it (change it any time in Settings):
 
-- **Talk and listen.** Press the yellow **Talk** button, **Space** anywhere on the Shop page, or **Alt+T** from anywhere (even in the text box or the read-back), say what you need, and hear the answer. A rising tone means "listening", a falling one "got it". **Hands-free** (on by default) listens again after every reply, and silence ends it quietly, so a whole purchase needs no buttons: "black running shoes size 9" → "add number 1" → "buy it" → "confirm" → "cancel that". Short commands (confirm, change, don't order, cancel that, repeat, stop, help) are handled instantly in the browser, not by the AI. Speaking speed is adjustable.
+- **Talk and listen.** Press the yellow **Talk** button, **Space** anywhere on the Shop page, or **Alt+T** from anywhere (even in the text box or the read-back; in screen-reader mode only Alt+T, because screen readers pass Space through while reading), say what you need, and hear the answer. A rising tone means "listening", a falling one "got it". **Hands-free** (on by default) listens again after every reply, and silence ends it quietly, so a whole purchase needs no buttons: "black running shoes size 9" → "add number 1" → "buy it" → "confirm" → "cancel that". Short commands (confirm, change, don't order, cancel that, repeat, stop, help) are handled instantly in the browser, not by the AI. Speaking speed is adjustable.
 - **Screen reader.** Replies go to a live region your screen reader (NVDA, JAWS, VoiceOver, TalkBack) reads; Open Aisle stays quiet so there aren't two voices. Every page passes WCAG 2.2 AA checks.
 - **Read and type.** Large Atkinson Hyperlegible text, Enter to send.
 
@@ -87,11 +87,11 @@ pnpm install
 pnpm demo              # http://localhost:3000
 ```
 
-That's it. `pnpm demo` makes `.env` from `.env.example` if you don't have one, sets up and fills the database (2 demo stores, 15 products, demo shopper "Asha"), and starts the app together with a fake PayPal, so it works with **no keys at all**. Without an AI key the assistant runs in *simple mode*: it understands short requests ("running shoes under 60", "add number 1", "buy it", "cancel that"); add a key to `.env` for full conversation.
+That's it. `pnpm demo` makes `.env` from `.env.example` if you don't have one, sets up the database, and starts the app together with a fake PayPal, so it works with **no keys at all**. The first time, it also fills in 2 demo stores, 15 products, the demo shopper "Asha" and some simulated shoppers, so the store pages have numbers; after that it keeps your orders (`pnpm db:seed` starts the demo over). Without an AI key the assistant runs in *simple mode*: it understands short requests ("running shoes under 60", "add number 1", "buy it", "cancel that"); add a key to `.env` for full conversation.
 
 Everything lives in one `.env` at the top of the repo. To use the real PayPal sandbox instead of the fake, put your sandbox `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` in `.env` and remove the `PAYPAL_API_BASE` line. Different database? Change `DATABASE_URL`.
 
-Other commands: `pnpm db:setup` (set up and refill the database only), `pnpm demo:activity` (simulated shoppers, so the store pages have numbers), `pnpm fake-paypal` and `pnpm dev` (run the two parts yourself).
+Other commands: `pnpm db:setup` (set up and refill the database only), `pnpm demo:activity` (more simulated shoppers), `pnpm fake-paypal` and `pnpm dev` (run the two parts yourself). The fake PayPal remembers connected accounts between restarts, like the real one.
 
 The fake PayPal speaks the same API as the sandbox for every call Open Aisle makes, and is just as strict: totals must add up, voided holds can't be captured, request ids are idempotent, and it sends webhooks.
 
@@ -116,7 +116,7 @@ Full description: [`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)
 ## Tests and evals
 
 ```bash
-pnpm test    # 60 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
+pnpm test    # 64 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
              # the Merchant API, the AG Studio ↔ Claude adapter, the OpenAPI file vs the real routes, MCP checkout
 pnpm eval    # real-model evals (needs ANTHROPIC_API_KEY): trust traps, quality, Hindi → packages/core/evals/results.md
 pnpm e2e     # 29 real-browser checks (with `pnpm demo` running; `pnpm db:seed` first for a clean run): axe on every page, first-visit choice, a full

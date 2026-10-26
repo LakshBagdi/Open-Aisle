@@ -191,6 +191,7 @@ img {
 .brand {
   display: inline-flex;
   align-items: center;
+  min-height: 2.75rem;
   gap: 0.65rem;
   font-weight: 700;
   font-size: var(--step-1);
@@ -221,7 +222,9 @@ img {
   padding: 0;
 }
 .site-nav a {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
   color: #ffffff;
   text-decoration: none;
   padding: 0.45rem 0.9rem;
@@ -570,15 +573,20 @@ legend {
 }
 .product__actions {
   margin-top: auto;
-  padding-top: 0.6rem;
-  display: flex;
-  flex-wrap: wrap;
+  padding-top: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
+}
+.product__actions .btn {
+  min-height: 2.75rem;
+  padding-inline: 0.5rem;
+  width: 100%;
 }
 
 /* ─── The dock: talk button and message box ─────────────────────────── */
 .dock {
-  position: sticky;
+  position: relative;
   bottom: 0.75rem;
   margin-top: auto;
   background: var(--surface);
@@ -612,7 +620,7 @@ legend {
 }
 .btn--quiet {
   border-color: var(--line-strong);
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   padding: 0.35rem 0.9rem;
   font-size: var(--step--1);
 }
@@ -662,7 +670,8 @@ legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 1.5rem;
+  justify-content: space-between;
+  gap: 0.25rem 1.5rem;
   margin-top: 0.6rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--line);
@@ -674,7 +683,7 @@ legend {
   font-weight: 400;
   font-size: 1rem;
   margin: 0;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   cursor: pointer;
 }
 .toggle input {
@@ -688,6 +697,15 @@ legend {
   color: var(--muted);
   margin: 0.15rem 0 0;
   max-width: none;
+}
+
+/* The dock floats over the conversation only once there is one to scroll,
+   and only when the window is tall enough; with zoom or large text it would
+   cover half the screen, so it simply sits after the conversation. */
+@media (min-height: 40rem) {
+  html:not([data-large-text="true"]) .dock--floating {
+    position: sticky;
+  }
 }
 
 /* The talk button: a yellow, textured dome like a crossing push-button. */
@@ -873,14 +891,24 @@ legend {
 }
 .panel--quiet {
   background: transparent;
-  border-style: dashed;
-  border-color: var(--line-strong);
 }
-.promises {
+.panel .promises {
+  list-style: none;
+  padding: 0;
   font-size: 1.0625rem;
 }
+.promises li {
+  display: grid;
+  grid-template-columns: 1.25rem 1fr;
+  gap: 0.5rem;
+}
+.promises li::before {
+  content: "✓";
+  color: var(--go);
+  font-weight: 700;
+}
 .promises li + li {
-  margin-top: 0.4rem;
+  margin-top: 0.55rem;
 }
 .panel .cart__total {
   font-size: var(--step-2);
@@ -920,12 +948,13 @@ legend {
 /* ─── Read-back dialog: the one loud surface ─────────────────────────── */
 dialog.readback {
   width: min(40rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
   border: 4px solid #10233f;
   border-radius: 1.5rem;
   padding: 0;
   color: #10233f;
   background: #ffffff;
-  overflow: hidden;
 }
 dialog.readback:focus-visible {
   /* The dialog takes focus so its order is read first; its own thick border already marks it. */
@@ -1077,10 +1106,15 @@ dialog.readback::backdrop {
   text-overflow: clip;
 }
 
+.panel .action-list,
 .action-list {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+.action-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 .action-list li {
   display: grid;
@@ -1116,8 +1150,9 @@ dialog.readback::backdrop {
   width: 100%;
 }
 .summary-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  max-width: 52rem;
   gap: 1rem;
   margin: 0 0 1.5rem;
   padding: 0;
@@ -1128,7 +1163,6 @@ dialog.readback::backdrop {
   border: 1px solid var(--line);
   border-radius: 1.1rem;
   padding: 0.85rem 1.25rem;
-  min-width: 12rem;
   color: var(--muted);
   font-size: 1.0625rem;
 }
@@ -1186,4 +1220,50 @@ dialog.readback::backdrop {
 .side .btn--primary {
   width: 100%;
   margin-top: 0.25rem;
+}
+
+/* ─── Phones ──────────────────────────────────────────────────────────── */
+@media (max-width: 40rem) {
+  /* One tidy row of navigation instead of a wrapped second line. */
+  .site-nav ul {
+    flex-wrap: nowrap;
+    gap: 0.1rem;
+    overflow-x: auto;
+  }
+  .site-nav a {
+    font-size: 1rem;
+    padding: 0.45rem 0.7rem;
+    white-space: nowrap;
+  }
+  .readback .btn-row {
+    flex-direction: column;
+  }
+  .readback .btn-row .btn {
+    width: 100%;
+  }
+  .readback__body {
+    padding: 1rem 1.1rem 1.25rem;
+  }
+  .readback__band {
+    padding: 0.9rem 1.1rem 0.75rem;
+  }
+}
+
+/* AG Grid with automatic height: no blank strip under a short table. */
+.ag-grid-scrolling-rows.ag-layout-auto-height,
+.ag-layout-auto-height .ag-center-cols-viewport,
+.ag-layout-auto-height .ag-center-cols-container {
+  min-height: 3.5rem !important; /* one row: room for "no rows", no blank strip under a short table */
+}
+
+/* Bryntum fix board: card titles wrap instead of being cut off (Bryntum sets nowrap). */
+.tool-frame .b-task-board-card-header .b-task-board-text {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+/* AG Studio: same typeface as the rest of the app. */
+.tool-frame {
+  --ag-font-family: var(--font);
+  font-family: var(--font);
 }

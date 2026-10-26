@@ -74,6 +74,11 @@ function spaceIsFree(target: EventTarget | null) {
   return !target.closest("input, textarea, select, button, a, summary, [role='button'], [role='checkbox'], [role='grid'], [role='gridcell'], [role='dialog']");
 }
 
+/** "I found 3. Number 1: X, $5, from Y. Number 2: … Say “…”." → "I found 3. Say “…”." (the cards show the rest). */
+function shortForCards(text: string) {
+  return text.replace(/\s*Number \d+: [^]*?, from [^.]+\./g, "").trim();
+}
+
 let counter = 0;
 const nextId = () => `t${Date.now()}-${counter++}`;
 
@@ -117,7 +122,9 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
     if (!end || turns.length === 0) return;
     const dock = document.querySelector<HTMLElement>(".dock");
     end.style.scrollMarginBottom = `${(dock?.offsetHeight ?? 0) + 24}px`;
-    end.scrollIntoView({ block: "end", behavior: "smooth" });
+    const calm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // After layout, so the newest turn really ends up above the dock.
+    requestAnimationFrame(() => end.scrollIntoView({ block: "end", behavior: calm ? "auto" : "smooth" }));
   }, [turns.length, busy]);
 
   /**
@@ -242,7 +249,8 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
           setConfirmError(null);
           setReadback(rb);
           // The read-back speaks for itself; then, in a voice conversation, we listen for "confirm".
-          say(rb.blockedReason ?? `${rb.spoken} ${T("readbackSay")}`, { listenAfter: !rb.blockedReason });
+          // rb.spoken already ends by asking for "confirm".
+          say(rb.blockedReason ?? rb.spoken, { listenAfter: !rb.blockedReason });
         } else {
           say(d.reply, { listenAfter: true });
         }
@@ -398,7 +406,7 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const altT = e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyT";
-      const space = e.key === " " && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && spaceIsFree(e.target) && !live.current.readback;
+      const space = e.key === " " && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && spaceIsFree(e.target) && !live.current.readback && !live.current.modes.screenReader; // screen readers pass Space through while reading
       if (altT || space) {
         e.preventDefault();
         talk();
@@ -423,10 +431,11 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
       const patch: Partial<Modes> =
         how === "voice" ? { voice: true, screenReader: false, handsFree: true, onboarded: true } : how === "reader" ? { voice: false, screenReader: true, onboarded: true } : { voice: false, screenReader: false, onboarded: true };
       updateModes(patch);
+      // Move focus right away (the chooser is about to disappear), so the first keys typed aren't lost.
       if (how === "voice") {
+        talkRef.current?.focus();
         speech.speak(T("voiceWelcome"));
-        setTimeout(() => talkRef.current?.focus(), 50);
-      } else setTimeout(() => inputRef.current?.focus(), 50);
+      } else inputRef.current?.focus();
     },
     [updateModes, speech, T],
   );
@@ -493,27 +502,36 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         )}
 
         {turns.length === 0 ? (
-          <div className="starters">
-            <h2 className="starters__title">{T("tryAsking")}</h2>
-            <ul className="starters__list">
-              {STARTERS.map((k) => (
-                <li key={k}>
-                  <button type="button" className="chip" onClick={() => handleInput(T(k), "typed")} disabled={busy}>
-                    {T(k)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          // On a first visit the "how would you like to use it" question comes first, on its own.
+          modes.onboarded && (
+            <div className="starters">
+              <h2 className="starters__title">{T("tryAsking")}</h2>
+              <ul className="starters__list">
+                {STARTERS.map((k) => (
+                  <li key={k}>
+                    <button type="button" className="chip" onClick={() => handleInput(T(k), "typed")} disabled={busy}>
+                      {T(k)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
         ) : (
           <ol className="transcript" aria-label={T("conversation")}>
             {turns.map((t) => (
               <li key={t.id} className={`turn turn--${t.kind}`}>
                 <h3 className="visually-hidden">{T(t.kind)}</h3>
                 <div className="turn__bubble">
-                  {t.text.split(/\n{2,}/).map((p, i) => (
-                    <p key={i}>{p}</p>
-                  ))}
+                  {t.products && shortForCards(t.text) !== t.text ? (
+                    <>
+                      {/* The cards below show each product; on screen the list isn't repeated, but screen readers still hear it all. */}
+                      <p aria-hidden="true">{shortForCards(t.text)}</p>
+                      <p className="visually-hidden">{t.text}</p>
+                    </>
+                  ) : (
+                    t.text.split(/\n{2,}/).map((p, i) => <p key={i}>{p}</p>)
+                  )}
                 </div>
                 {t.products && <ProductCards items={t.products} disabled={busy} onAsk={(q) => handleInput(q, "typed")} />}
               </li>
@@ -533,14 +551,14 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
         )}
         <div ref={endRef} />
 
-        <div className="dock">
+        <div className={`dock${turns.length > 0 ? " dock--floating" : ""}`}>
           <div className="dock__row">
             <button
               ref={talkRef}
               type="button"
               className={`talk talk--${mode}`}
               aria-pressed={speech.listening}
-              aria-keyshortcuts="Space Alt+T"
+              aria-keyshortcuts={modes.screenReader ? "Alt+T" : "Space Alt+T"}
               aria-describedby="talk-hint"
               onClick={talk}
               disabled={busy}
@@ -609,7 +627,7 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
             )}
           </div>
           <p id="talk-hint" className="dock__hint">
-            {speech.supported ? T("keysHint") : T("noVoiceHint")} <span id="ask-hint">{T("messageHint")}</span>
+            {speech.supported ? T(modes.screenReader ? "keysHintReader" : "keysHint") : T("noVoiceHint")} <span id="ask-hint">{T("messageHint")}</span>
           </p>
         </div>
 

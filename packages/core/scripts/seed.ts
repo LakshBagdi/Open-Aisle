@@ -2,7 +2,8 @@
  * Fill the database with demo stores, products and one demo shopper.
  * Safe to run again: it wipes the demo stores first.
  *
- *   pnpm db:seed
+ *   pnpm db:seed              start the demo over
+ *   pnpm db:seed --if-empty   only if there's no demo data yet
  */
 import "../src/loadEnv";
 import { eq, inArray } from "drizzle-orm";
@@ -74,8 +75,21 @@ export async function seed() {
   console.log("Demo shopper: Asha (limit $150 per order, $400 a month, 10-minute undo window)");
 }
 
+/** `pnpm db:seed --if-empty` only fills an empty database (used by `pnpm demo`, so restarting keeps your orders). */
+async function main() {
+  if (process.argv.includes("--if-empty")) {
+    const [any] = await getDb().select({ id: stores.id }).from(stores).where(inArray(stores.slug, SEED_STORES.map((s) => s.slug))).limit(1);
+    if (any) {
+      console.log("Demo data is already there (your orders are kept). To start over: pnpm db:seed");
+      return;
+    }
+  }
+  await seed();
+  console.log("SEEDED");
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  seed()
+  main()
     .catch((e) => {
       console.error(e);
       process.exitCode = 1;

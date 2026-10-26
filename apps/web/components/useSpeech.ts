@@ -49,7 +49,8 @@ const ERRORS: Record<string, string> = {
 
 /** Split into sentence-sized pieces (max ~220 characters each). */
 export function speechChunks(text: string): string[] {
-  const sentences = text.replace(/\s+/g, " ").match(/[^.!?।]+[.!?।]*/g) ?? [text];
+  // Split only where a sentence ends (punctuation then a space), never inside "$54.99".
+  const sentences = text.replace(/\s+/g, " ").trim().split(/(?<=[.!?।])\s+/);
   const out: string[] = [];
   for (const raw of sentences) {
     const s = raw.trim();

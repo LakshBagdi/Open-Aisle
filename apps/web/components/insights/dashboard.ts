@@ -77,10 +77,6 @@ export const INITIAL_STATE = {
     {
       id: "overview",
       widgets: {
-        paid: { type: "value", dataMapping: { value: [{ id: "orders.paid", aggregation: "sum" }] }, format: title("Paid via PayPal") },
-        caught: { type: "value", dataMapping: { value: [{ id: "orders.cancelled_in_undo", aggregation: "sum" }] }, format: title("Caught by undo") },
-        hits: { type: "value", dataMapping: { value: [{ id: "barriers.shopper_hits", aggregation: "sum" }] }, format: title("Barrier hits") },
-        orders: { type: "value", dataMapping: { value: [{ id: "orders.order_id", aggregation: "count" }] }, format: title("Orders") },
         byKind: {
           type: "bar-chart-grouped",
           dataMapping: { categoryKey: [{ id: "barriers.kind" }], valueKey: [{ id: "barriers.shopper_hits", aggregation: "sum" }] },
@@ -93,18 +89,14 @@ export const INITIAL_STATE = {
         },
         table: {
           type: "grid",
-          dataMapping: { cols: [{ id: "barriers.product" }, { id: "barriers.kind" }, { id: "barriers.status" }, { id: "barriers.shopper_hits" }] },
+          dataMapping: { cols: [{ id: "barriers.product" }, { id: "barriers.kind" }, { id: "barriers.status" }] },
           format: title("Barriers by product"),
         },
       },
       widgetLayout: {
-        paid: { xTrack: 0, yTrack: 0, xSpan: 6, ySpan: 5 },
-        caught: { xTrack: 6, yTrack: 0, xSpan: 6, ySpan: 5 },
-        hits: { xTrack: 12, yTrack: 0, xSpan: 6, ySpan: 5 },
-        orders: { xTrack: 18, yTrack: 0, xSpan: 6, ySpan: 5 },
-        byKind: { xTrack: 0, yTrack: 5, xSpan: 14, ySpan: 14 },
-        byStatus: { xTrack: 14, yTrack: 5, xSpan: 10, ySpan: 14 },
-        table: { xTrack: 0, yTrack: 19, xSpan: 24, ySpan: 14 },
+        byKind: { xTrack: 0, yTrack: 0, xSpan: 14, ySpan: 18 },
+        byStatus: { xTrack: 14, yTrack: 0, xSpan: 10, ySpan: 18 },
+        table: { xTrack: 0, yTrack: 18, xSpan: 24, ySpan: 22 },
       },
     },
     {

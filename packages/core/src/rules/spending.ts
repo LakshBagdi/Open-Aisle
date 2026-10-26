@@ -17,10 +17,10 @@ export type RulesInput = {
 
 /** Create or replace a person's rules, signed. */
 export async function setSpendingRules(userId: string, input: RulesInput): Promise<SpendingRules> {
-  if (input.perOrderCents <= 0 || input.monthlyCents <= 0) throw new Error("Limits must be above zero");
-  if (input.perOrderCents > input.monthlyCents) throw new Error("Per-order limit can't be above the monthly limit");
+  if (input.perOrderCents <= 0 || input.monthlyCents <= 0) throw new Error("Spending limits need to be more than $0.");
+  if (input.perOrderCents > input.monthlyCents) throw new Error("The most for one order can't be more than the most for a month. Lower the first, or raise the second.");
   const undo = input.undoWindowSeconds ?? 600;
-  if (undo < 60 || undo > 3 * 24 * 3600) throw new Error("Undo window must be between 1 minute and 3 days");
+  if (undo < 60 || undo > 3 * 24 * 3600) throw new Error("The time to change your mind must be between 1 minute and 3 days.");
 
   const db = getDb();
   const [existing] = await db.select().from(spendingRules).where(eq(spendingRules.userId, userId)).limit(1);

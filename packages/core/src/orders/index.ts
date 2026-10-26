@@ -91,6 +91,8 @@ export async function placeOrder(userId: string, cartId: string, confirmationTok
   } catch (err) {
     const reason = err instanceof PayPalError ? payPalReason(err) : "Something went wrong talking to PayPal.";
     await db.update(orders).set({ status: "failed", failureReason: reason }).where(eq(orders.id, order!.id));
+    // The saved account no longer works (removed at PayPal): forget it, so the read-back asks to reconnect next time.
+    if (savedAccountGone(paypalIssue(err))) await db.update(paypalVault).set({ status: "removed" }).where(eq(paypalVault.id, vault.id));
     throw new OrderError("paypal", `${reason} Nothing was charged.`);
   }
 }
@@ -99,7 +101,12 @@ function payPalReason(err: PayPalError): string {
   const issue = (err.details as any)?.details?.[0]?.issue as string | undefined;
   if (issue === "INSTRUMENT_DECLINED") return "PayPal declined the payment.";
   if (issue === "PAYER_ACTION_REQUIRED") return "PayPal needs you to approve this payment in PayPal.";
+  if (savedAccountGone(issue)) return "Your saved PayPal account isn't working any more. Please connect PayPal again in Settings.";
   return "PayPal couldn't place the order.";
+}
+
+function savedAccountGone(issue: string | undefined) {
+  return issue === "INVALID_VAULT_ID" || issue === "PAYMENT_SOURCE_DECLINED_BY_PROCESSOR" || issue === "PAYMENT_SOURCE_CANNOT_BE_USED";
 }
 
 function paypalIssue(err: unknown): string | undefined {

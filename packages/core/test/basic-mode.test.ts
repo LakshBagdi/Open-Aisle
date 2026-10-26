@@ -5,6 +5,7 @@
 import { MockLanguageModelV4 } from "ai/test";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { parseRequest, pickNumber, runTurn } from "../src/agent";
+import { pickQuantity } from "../src/agent/basic";
 import { closeDb } from "../src/db";
 import { voiceCommand } from "../src/i18n";
 import { placeOrder } from "../src/orders";
@@ -128,6 +129,35 @@ describe("falling back when the AI fails", () => {
     const again = await say("Add the Trail Runner 2 to my cart", c);
     expect(again.reply).toMatch(/Which size would you like for the Trail Runner 2/);
     expect(again.events.some((e) => e.type === "products")).toBe(false);
+  });
+
+  it("handles the way people really talk about amounts, sizes, colours and the cart", async () => {
+    expect(pickQuantity("add two of number 2 in size 10")).toBe(2);
+    expect(pickQuantity("add 3 pairs")).toBe(3);
+    expect(pickQuantity("add number 2")).toBeUndefined();
+    expect(pickQuantity("something under 20 dollars")).toBeUndefined();
+
+    const say = async (text: string, conversationId?: string) => runTurn({ userId: world.user.id, text, conversationId });
+    const c = (await say("shoes or mugs")).conversationId;
+    await say("trail running shoes", c);
+    expect((await say("is it in stock", c)).reply).toMatch(/lists the Trail Runner 2 for sale now/);
+    expect((await say("does it come in size 12", c)).reply).toMatch(/^No, the Trail Runner 2 comes in sizes 8, 9, 10, 11/);
+    expect((await say("does it come in black", c)).reply).toMatch(/^Yes, the Trail Runner 2 is Black/);
+    expect((await say("add two of them in size 10", c)).reply).toMatch(/^Added 2 of the Trail Runner 2, size 10/);
+    const changed = await say("change the size to 9", c);
+    expect(changed.reply).toMatch(/^Done: the Trail Runner 2 is now size 9/);
+    expect((await say("what's in my cart", c)).reply).toMatch(/2 × Trail Runner 2, size 9/);
+    // Naming something that isn't in the cart never removes something else.
+    expect((await say("remove the scale", c)).reply).toMatch(/^Your cart doesn't have that\. It has: Trail Runner 2/);
+    expect((await say("start over", c)).reply).toMatch(/^Okay, let's start again/);
+    expect((await say("empty my cart", c)).reply).toBe("Your cart is empty now.");
+  });
+
+  it("answers which is cheapest from the last results", async () => {
+    const say = async (text: string, conversationId?: string) => runTurn({ userId: world.user.id, text, conversationId });
+    const s = await say("something under 100 dollars");
+    expect(s.reply).toMatch(/I found 2/);
+    expect((await say("which is the cheapest", s.conversationId)).reply).toMatch(/^The cheapest is number \d, the Stoneware Mug, at \$14\.99/);
   });
 
   it("a stale conversation id starts a fresh conversation instead of failing", async () => {

@@ -274,11 +274,11 @@ export function createTools(ctx: ToolContext) {
     }),
 
     remove_from_cart: tool({
-      description: "Remove a product from a cart, or change its quantity (0 removes it).",
-      inputSchema: z.object({ cart_id: id, product_id: id, quantity: z.number().int().min(0).max(10).optional() }),
-      execute: ({ cart_id, product_id, quantity }) =>
+      description: "Remove a product from a cart, or change its quantity (0 removes it). Give options (e.g. {size: '10'}) to remove only that size or colour.",
+      inputSchema: z.object({ cart_id: id, product_id: id, quantity: z.number().int().min(0).max(10).optional(), options: z.record(z.string(), z.string()).optional() }),
+      execute: ({ cart_id, product_id, quantity, options }) =>
         friendly(async () => {
-          const cart = quantity === undefined ? await removeFromCart(ctx.userId, cart_id, product_id) : await setQuantity(ctx.userId, cart_id, product_id, quantity);
+          const cart = quantity === undefined ? await removeFromCart(ctx.userId, cart_id, product_id, options) : await setQuantity(ctx.userId, cart_id, product_id, quantity);
           const store = await storeById(cart.storeId);
           ctx.events.push({ type: "cart_updated", cartId: cart.id, itemCount: cart.items.length, total: money(cart.totals!.totalCents) });
           return { updated: true, cart: cartSummary(cart, store.name) };

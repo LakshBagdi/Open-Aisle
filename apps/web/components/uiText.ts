@@ -67,7 +67,7 @@ const en = {
   chooseReaderHint: "Your screen reader reads my replies. I stay quiet so we don't talk over each other.",
   chooseType: "Read and type",
   chooseTypeHint: "Replies on screen, in large clear text.",
-  voiceWelcome: "Voice is on. Press Talk, or Alt and T, and tell me what you need.",
+  voiceWelcome: "Voice is on. Press Space, or the yellow Talk button, and tell me what you need. I'll keep listening after each answer.",
   rbTitle: "Check your order",
   rbFrom: "From {store}",
   rbConfirm: "Confirm and pay {total}",
@@ -94,13 +94,13 @@ const en = {
   dockSpeaking: "Speaking… press the button or Escape to stop.",
   talkAgain: "Press the talk button, Space, or Alt + T when you want to talk again.",
   keysHint: "Press Space (or Alt + T) anywhere to talk. Escape stops.",
+  keysHintReader: "Press Alt + T anywhere to talk. Escape stops.",
   noVoiceHint: "Voice input needs Chrome, Edge or Safari. You can still type.",
   readAloudToggle: "Read replies aloud, even when I type",
   cartEmptyHint: "Empty. Ask for something and say “add it”.",
   cartItems: "{count}, with tax and delivery. I'll read the order back before anything is paid.",
   reviewBuy: "Review and buy",
   undoHeld: "PayPal is holding the money, not taking it. Say “cancel that”, or:",
-  readbackSay: "Say “confirm” to pay, or “change” to change something.",
   productsFound: "{count} found",
 } as const;
 
@@ -166,7 +166,7 @@ const hi: Partial<Record<UiKey, string>> = {
   chooseReaderHint: "आपका स्क्रीन रीडर मेरे जवाब पढ़ेगा। मैं चुप रहूँगा ताकि दो आवाज़ें न हों।",
   chooseType: "पढ़ें और लिखें",
   chooseTypeHint: "जवाब स्क्रीन पर, बड़े साफ़ अक्षरों में।",
-  voiceWelcome: "आवाज़ चालू है। बोलें बटन दबाइए, या Alt और T, और बताइए आपको क्या चाहिए।",
+  voiceWelcome: "आवाज़ चालू है। Space या पीला बोलें बटन दबाइए, और बताइए आपको क्या चाहिए। हर जवाब के बाद मैं फिर सुनूँगा।",
   rbTitle: "अपना ऑर्डर जाँचें",
   rbFrom: "{store} से:",
   rbConfirm: "पुष्टि करें और {total} दें",
@@ -194,11 +194,11 @@ const hi: Partial<Record<UiKey, string>> = {
   talkAgain: "फिर से बोलने के लिए बटन, Space या Alt + T दबाएँ।",
   keysHint: "कहीं से भी बोलने के लिए Space (या Alt + T) दबाएँ। Escape रोकता है।",
   readAloudToggle: "लिखने पर भी जवाब ज़ोर से पढ़ें",
+  keysHintReader: "कहीं से भी बोलने के लिए Alt + T दबाएँ। Escape रोकता है।",
   cartEmptyHint: "खाली। कुछ माँगिए और “जोड़ दो” कहिए।",
   cartItems: "{count}, टैक्स और डिलीवरी के साथ। पैसे देने से पहले मैं ऑर्डर पढ़कर सुनाऊँगा।",
   reviewBuy: "देखें और ख़रीदें",
   undoHeld: "पैसा PayPal ने रोका है, लिया नहीं है। “रद्द करो” कहें, या:",
-  readbackSay: "पैसे देने के लिए 'पुष्टि' कहें, या कुछ बदलने के लिए 'बदलो'।",
 };
 
 export function ui(lang: Lang, key: UiKey, vars: Record<string, string> = {}) {

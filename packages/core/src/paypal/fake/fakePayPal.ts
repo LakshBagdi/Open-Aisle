@@ -15,6 +15,7 @@
  * before the demo. This exists so anyone can run Open Aisle with zero keys.
  */
 import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 
 type Money = { currency_code: string; value: string };
@@ -35,6 +36,12 @@ export type FakePayPalOptions = {
   webhookDelayMs?: number;
   payerEmail?: string;
   log?: boolean;
+  /**
+   * Keep saved accounts, holds and payments in this file, so they survive a
+   * restart like they would at the real PayPal. Without it, restarting the
+   * fake would forget the shopper's saved PayPal account.
+   */
+  stateFile?: string;
 };
 
 const id = (prefix: string) => `${prefix}-${randomBytes(6).toString("hex").toUpperCase()}`;
@@ -54,6 +61,24 @@ export function createFakePayPal(opts: FakePayPalOptions = {}) {
   };
   let baseUrl = "";
   const webhookId = opts.webhookId ?? "FAKE-WEBHOOK-ID";
+
+  const MAPS = ["setupTokens", "paymentTokens", "orders", "authorizations", "captures", "refunds", "idempotency"] as const;
+  if (opts.stateFile && existsSync(opts.stateFile)) {
+    try {
+      const saved = JSON.parse(readFileSync(opts.stateFile, "utf8"));
+      for (const k of MAPS) for (const [key, value] of saved[k] ?? []) (state[k] as Map<string, unknown>).set(key, value);
+    } catch {
+      /* a broken file: start fresh */
+    }
+  }
+  function save() {
+    if (!opts.stateFile) return;
+    try {
+      writeFileSync(opts.stateFile, JSON.stringify(Object.fromEntries(MAPS.map((k) => [k, [...state[k].entries()]]))));
+    } catch {
+      /* best effort */
+    }
+  }
 
   function log(...args: unknown[]) {
     if (opts.log) console.log("[fake-paypal]", ...args);
@@ -335,6 +360,7 @@ export function createFakePayPal(opts: FakePayPalOptions = {}) {
       if (idemKey && out.status < 500) state.idempotency.set(idemKey, { status: out.status, body: out.body });
     }
     log(req.method, url.pathname, "→", out.status);
+    save();
 
     if (out.redirect) {
       res.writeHead(out.status, { location: out.redirect });

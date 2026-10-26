@@ -11,7 +11,7 @@
  * directly for the few sentences the phrasebook is missing.
  */
 import axios from "axios";
-import { Client, Environment, LogLevel } from "@paypal/paypal-server-sdk";
+import { Client, Environment } from "@paypal/paypal-server-sdk";
 import { env, paypalApiBase } from "../env";
 
 const SANDBOX = "https://api-m.sandbox.paypal.com";
@@ -43,7 +43,8 @@ export function getPayPal(): Client {
       },
       environment: e.PAYPAL_ENV === "live" ? Environment.Production : Environment.Sandbox,
       timeout: 20_000,
-      logging: { logLevel: LogLevel.Error, logRequest: { logBody: false }, logResponse: { logBody: false } },
+      // No request/response logging: the SDK prints every call as "error: Response 201", which looks like a failure.
+      // Real failures still surface as PayPalError with PayPal's own reason.
       ...(overrideBase ? { unstable_httpClientOptions: { adapter: rewriteAdapter(overrideBase) } } : {}),
     });
   }

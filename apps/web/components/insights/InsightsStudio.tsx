@@ -110,7 +110,7 @@ export default function InsightsStudio() {
         </ul>
       )}
 
-      {!ai && loaded && <p className="hint">The AI assistant turns on when ANTHROPIC_API_KEY is set. The dashboard and editing work without it.</p>}
+      {!ai && loaded && <p className="hint">The AI assistant turns on when an AI key (Claude, Gemini or Groq) is set in .env. The dashboard and editing work without it.</p>}
 
       <div className="tool-frame" role="region" aria-label="Insights dashboard">
         {data ? (

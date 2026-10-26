@@ -27,7 +27,7 @@ export function ProductCards(props: { items: ShownProduct[]; disabled: boolean; 
               {sizes && sizes.length > 0 && <p className="product__meta">Sizes {sizes.join(", ")}</p>}
               <div className="product__actions">
                 <button type="button" className="btn btn--small" disabled={props.disabled} onClick={() => props.onAsk(`Tell me more about the ${p.title}`)}>
-                  Tell me more<span className="visually-hidden"> about {p.title}</span>
+                  Details<span className="visually-hidden"> about {p.title}</span>
                 </button>
                 <button type="button" className="btn btn--small btn--primary" disabled={props.disabled} onClick={() => props.onAsk(`Add the ${p.title} to my cart`)}>
                   Add to cart<span className="visually-hidden">: {p.title}</span>

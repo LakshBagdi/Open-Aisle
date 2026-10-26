@@ -21,7 +21,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={lang === "hi" ? "hi" : "en"} data-large-text={user?.modes.largeText ? "true" : "false"}>
       <body>
         <a className="skip-link" href="#main">
-          Skip to main content
+          {lang === "hi" ? "मुख्य हिस्से पर जाएँ" : "Skip to main content"}
         </a>
         <header className="site-header">
           <div className="site-header__inner">
@@ -34,8 +34,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </span>
               Open Aisle
             </a>
-            <nav className="site-nav" aria-label="Main">
-              <NavLinks />
+            <nav className="site-nav" aria-label={lang === "hi" ? "मुख्य" : "Main"}>
+              <NavLinks lang={lang} />
             </nav>
           </div>
         </header>

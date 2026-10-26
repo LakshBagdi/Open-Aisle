@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { addToCart, removeFromCart } from "../src/cart";
 import { closeDb, getDb } from "../src/db";
-import { orders, products, spendingRules } from "../src/db/schema";
+import { orders, paypalVault, products, spendingRules } from "../src/db/schema";
 import { buildReadBack, cancelOrder, captureDueOrders, captureOrder, listOrders, OrderError, placeOrder, shipOrder, spendingSummary, startReturn, unreadNotifications } from "../src/orders";
 import { ConfirmationError, issueConfirmation } from "../src/rules";
 import { resetDb, seedWorld, startFakePayPal } from "./helpers";
@@ -225,5 +225,18 @@ describe("a hold PayPal no longer has", () => {
   it("can still be cancelled", async () => {
     const order = await placedWithLostHold();
     expect((await cancelOrder(world.user.id, order.id)).message).toBe("Cancelled. Nothing was charged.");
+  });
+});
+
+describe("a saved PayPal account that stopped working", () => {
+  it("says to reconnect PayPal, charges nothing, and forgets the dead account", async () => {
+    fake.state.paymentTokens.clear(); // as if the shopper removed Open Aisle in their PayPal account
+    const holdsBefore = fake.state.authorizations.size;
+    const cart = await cartWithShoe();
+    const { token } = await issueConfirmation(world.user.id, cart.id);
+    await expect(placeOrder(world.user.id, cart.id, token)).rejects.toThrow("Your saved PayPal account isn't working any more. Please connect PayPal again in Settings. Nothing was charged.");
+    const vaults = await getDb().select().from(paypalVault).where(eq(paypalVault.userId, world.user.id));
+    expect(vaults.every((v) => v.status === "removed")).toBe(true);
+    expect(fake.state.authorizations.size).toBe(holdsBefore);
   });
 });

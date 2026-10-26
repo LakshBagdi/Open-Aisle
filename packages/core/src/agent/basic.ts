@@ -29,7 +29,7 @@ import type { Lang } from "../i18n";
 import { createTools, type AgentEvent } from "./tools";
 
 type Hit = { product_id: string; title: string; price: string; store: string; arrives: string; options: Record<string, string[]>; key_facts: string[] };
-type Result = { id: string; title: string; options: Record<string, string[]> };
+type Result = { id: string; title: string; options: Record<string, string[]>; price?: string };
 export type BasicMemory = { basic: { results: Result[]; focus?: string; wanted?: { size?: string; color?: string } } };
 
 const ORDINALS: Record<string, number> = { first: 1, one: 1, "1": 1, second: 2, two: 2, "2": 2, third: 3, three: 3, "3": 3, fourth: 4, "4": 4, fifth: 5, "5": 5, last: -1 };
@@ -41,17 +41,30 @@ export function pickNumber(text: string): number | undefined {
   return word ? ORDINALS[word] : undefined;
 }
 
+const COUNT_WORDS: Record<string, number> = { a: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, pair: 2 };
+/** "add two of number 2", "3 pairs", "add 2 of them" → 2. Undefined when no amount is said. */
+export function pickQuantity(text: string): number | undefined {
+  const m =
+    text.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:of (?:them|those|these|it|that|number|the)|pairs?|pieces?|items?|units?|packs?)\b/i) ??
+    text.match(/\b(?:add|buy|get|i'?ll take|i want)\s+(\d+|two|three|four|five|six|seven|eight|nine|ten)\b(?!\s*(?:dollars?|usd|bucks))/i) ??
+    text.match(/\b(\d+)\s*(?:x|×)\b/i);
+  if (!m) return undefined;
+  const w = m[1]!.toLowerCase();
+  const n = /^\d+$/.test(w) ? Number(w) : COUNT_WORDS[w];
+  return n && n >= 1 && n <= 10 ? n : undefined;
+}
+
 const COLORS = ["black", "white", "grey", "gray", "blue", "red", "green", "navy", "brown", "pink", "yellow", "beige"];
 const PRICE = /(?:under|below|less than|max|maximum|up to|within|budget(?: of)?|cheaper than)\s*(?:\$|rs\.?|₹)?\s*(\d+(?:\.\d+)?)\s*(?:dollars?|usd|bucks)?/;
 
 /** Pull "size 9", "under $60", a colour, and the words to search for. */
 export function parseRequest(text: string) {
   const t = text.toLowerCase().replace(/[?!.,]/g, " ");
-  const size = t.match(/\bsize\s+([a-z0-9.]+)/i)?.[1];
+  const size = t.match(/\bsize\s+(?:(?:to|of|is|in)\s+)?([a-z0-9.]+)/i)?.[1];
   const price = t.match(PRICE)?.[1];
   const color = COLORS.find((c) => new RegExp(`\\b${c}\\b`).test(t));
   const query = t
-    .replace(/\bsize\s+[a-z0-9.]+/g, " ")
+    .replace(/\bsize\s+(?:(?:to|of|is|in)\s+)?[a-z0-9.]+/g, " ")
     .replace(PRICE, " ")
     .replace(/\b(i need|i want|i'?m looking for|looking for|find me|find|show me|search for|search|can you|could you|please|do you have|have you got|is there|are there|some|something|anything|a pair of|pair of|a|an|the|for me|get me|i'?d like)\b/g, " ")
     .replace(/\s+/g, " ")
@@ -92,7 +105,8 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
 
   const mem: BasicMemory["basic"] = (await lastMemory(ctx.conversationId)) ?? { results: [] };
   const remember = (patch: Partial<BasicMemory["basic"]> = {}): BasicMemory => ({ basic: { ...mem, ...patch } });
-  const done = (reply: string, patch?: Partial<BasicMemory["basic"]>) => ({ reply, memory: remember(patch), orderFacts: orderFacts.seen });
+  // Curly quotes around the things to say: “add it” reads better on screen and sounds the same.
+  const done = (reply: string, patch?: Partial<BasicMemory["basic"]>) => ({ reply: reply.replace(/"([^"]+)"/g, "“$1”"), memory: remember(patch), orderFacts: orderFacts.seen });
 
   const t = ctx.text.trim().toLowerCase().replace(/[?!.]+$/g, "").replace(/’/g, "'");
   const n = pickNumber(t);
@@ -122,6 +136,16 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
     return done(`Which one? ${mem.results.map((r, i) => `Number ${i + 1} is the ${r.title}.`).join(" ")}`);
   };
 
+  /** "9" → "9", "m" → "M (US 8-10)": the store's own spelling of a choice, when we know it. */
+  const matchOptions = (r: Result, want: Record<string, string>) =>
+    Object.fromEntries(
+      Object.entries(want).map(([k, v]) => {
+        const w = v.toLowerCase();
+        const vals = r.options[k];
+        return [k, vals?.find((x) => x.toLowerCase() === w) ?? vals?.find((x) => x.toLowerCase().startsWith(`${w} `) || x.toLowerCase().startsWith(`${w}(`)) ?? v];
+      }),
+    );
+
   /** Options from what the person said now, or earlier in the search. */
   const optionsFor = (r: Result, said: string) => {
     const p = parseRequest(said);
@@ -143,14 +167,15 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
     const opts = optionsFor(r, said);
     const missing = Object.keys(r.options).find((k) => !opts[k]);
     if (missing) return done(`Which ${missing} would you like for the ${r.title}? You can choose ${r.options[missing]!.join(", ")}.`, { focus: r.id });
-    const qty = Number(said.match(/\b(\d+)\s*(?:of them|of those|pairs|pieces|x)\b/)?.[1] ?? 1);
-    const res = await run("add_to_cart", { product_id: r.id, options: opts, quantity: Math.min(Math.max(qty, 1), 10) });
+    const qty = pickQuantity(said) ?? 1;
+    const res = await run("add_to_cart", { product_id: r.id, options: opts, quantity: qty });
     if ("error" in res) return done(res.error, { focus: r.id });
     const what = `${r.title}${Object.keys(opts).length ? `, ${variantText(opts)}` : ""}`;
     const line = res.cart.items.find((i: { product_id: string; options: Record<string, string> }) => i.product_id === r.id && Object.entries(opts).every(([k, v]) => i.options[k] === v));
     // Saying "add it" twice is easy to do by voice: make a second one obvious.
-    if (line && line.quantity > 1)
+    if (line && line.quantity > qty)
       return done(`Added another ${what}. You now have ${line.quantity} of them, and your cart is ${res.cart.total} with tax and delivery. If you only wanted one, say "remove it" and add it again.`, { focus: r.id });
+    if (qty > 1) return done(`Added ${qty} of the ${what}. Your cart is now ${res.cart.total} with tax and delivery. Say "buy it" when you're ready, or keep shopping.`, { focus: r.id });
     return done(`Added the ${what}. Your cart is now ${res.cart.total} with tax and delivery. Say "buy it" when you're ready, or keep shopping.`, { focus: r.id });
   };
 
@@ -160,6 +185,16 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
   if (/^(thanks|thank you|thank u|ok|okay|cool|great|nice|perfect|good|bye|goodbye|that's all|no thanks|nothing|धन्यवाद|शुक्रिया)\b/.test(t) && t.split(/\s+/).length <= 4)
     return done(ctx.lang === "hi" ? "आपका स्वागत है। और कुछ चाहिए तो बताइए।" : "You're welcome. Tell me if you need anything else.");
   if (/^(help|what can (i|you) (say|do)|how does this work|मदद)\b/.test(t)) return done(HELP[ctx.lang]);
+
+  if (/^(start (over|again)|new search|clear (this|that|the search)|forget (it|that)|never ?mind)\b/.test(t))
+    return done("Okay, let's start again. What are you looking for?", { results: [], focus: undefined, wanted: {} });
+  if (has(t, /\b(empty|clear) (my |the )?(cart|basket)\b/)) {
+    const view = await run("view_cart", {});
+    const cart = view.carts?.[0];
+    if (!cart) return done("Your cart is already empty.");
+    for (const i of cart.items) await run("remove_from_cart", { cart_id: cart.cart_id, product_id: i.product_id });
+    return done("Your cart is empty now.");
+  }
 
   // ── Orders and money ──────────────────────────────────────────────────
   if (has(t, /\b(cancel|undo)\b|रद्द|कैंसल/) && !has(t, /\bdon'?t\b|\bdo not\b/)) {
@@ -185,16 +220,47 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
     const view = await run("view_cart", {});
     const cart = view.carts?.[0];
     if (!cart) return done("Your cart is already empty.");
+    const words = (title: string) => title.toLowerCase().split(/[^a-z0-9]+/).filter((w: string) => w.length >= 4 || /^\d+$/.test(w));
+    const named = cart.items.filter((i: any) => words(i.title).some((w: string) => new RegExp(`\\b${w}`).test(t)));
+    // What's left after the verb and little words, e.g. "the scale" → "scale".
+    const rest = t.replace(/\b(remove|delete|take|out|off|of|from|my|the|a|an|it|that|this|them|one|please|cart|basket|don'?t want|get rid|number|no|\d+|first|second|third|last)\b/g, " ").trim();
+    const pointed = (byNumber && cart.items.find((i: any) => i.product_id === byNumber.id)) ?? (byName && cart.items.find((i: any) => i.product_id === byName.id));
     const target =
-      (byNumber && cart.items.find((i: any) => i.product_id === byNumber.id)) ??
-      cart.items.find((i: any) => t.includes(i.title.toLowerCase().split(" ")[0])) ??
-      (chosen && cart.items.find((i: any) => i.product_id === chosen.id)) ??
-      (cart.items.length === 1 ? cart.items[0] : undefined);
-    if (!target) return done(`Which item should I remove? Your cart has ${cart.items.map((i: any) => i.title).join(", ")}.`);
+      pointed ??
+      (named.length === 1 ? named[0] : undefined) ??
+      (!rest && chosen ? cart.items.find((i: any) => i.product_id === chosen.id) : undefined) ??
+      (!rest && cart.items.length === 1 ? cart.items[0] : undefined);
+    const list = cart.items.map((i: any) => i.title).join(", ");
+    if (!target && rest && named.length === 0) return done(`Your cart doesn't have that. It has: ${list}.`);
+    if (!target) return done(`Which item should I remove? Your cart has: ${list}.`);
     const r = await run("remove_from_cart", { cart_id: cart.cart_id, product_id: target.product_id });
     if ("error" in r) return done(r.error);
     return done(r.cart.items.length ? `Removed the ${target.title}. Your cart is now ${r.cart.total}.` : `Removed the ${target.title}. Your cart is empty now.`);
   }
+  if (has(t, /\b(change|switch|swap|make it|instead)\b/) && !has(t, /\badd\b/) && has(t, /\b(size|colou?r|\d+|black|white|grey|gray|blue|red|green|navy|brown|pink|yellow|beige|small|medium|large)\b/)) {
+    const view = await run("view_cart", {});
+    const cart = view.carts?.[0];
+    if (!cart) return done("Your cart is empty, so there's nothing to change. Add something first.");
+    const line = (byName && cart.items.find((i: any) => i.product_id === byName.id)) ?? (chosen && cart.items.find((i: any) => i.product_id === chosen.id)) ?? (cart.items.length === 1 ? cart.items[0] : undefined);
+    if (!line) return done(`Which item should I change? Your cart has: ${cart.items.map((i: any) => i.title).join(", ")}.`);
+    const result = mem.results.find((r) => r.id === line.product_id) ?? { id: line.product_id, title: line.title, options: {} as Record<string, string[]> };
+    const p = parseRequest(t);
+    const size = p.size ?? t.match(/\bto\s+(?:size\s+)?([a-z0-9.]+)\s*$/)?.[1] ?? t.match(/\b(\d+(?:\.5)?)\b/)?.[1];
+    const next: Record<string, string> = { ...line.options };
+    if (p.color && "color" in next) next.color = p.color;
+    else if (size && "size" in next) next.size = size;
+    else return done(`What should I change it to? For example: change the size to 9.`);
+    // Add the new choice first (that checks it exists), then take the old one out.
+    const wanted = matchOptions(result, next);
+    if (variantText(wanted) === variantText(line.options)) return done(`The ${line.title} is already ${variantText(line.options)}.`, { focus: line.product_id });
+    const added = await run("add_to_cart", { product_id: line.product_id, options: wanted, quantity: line.quantity });
+    if ("error" in added) return done(added.error, { focus: line.product_id });
+    const after = await run("remove_from_cart", { cart_id: cart.cart_id, product_id: line.product_id, options: line.options });
+    const total = "error" in after ? added.cart.total : after.cart.total;
+    const now = ("error" in after ? added : after).cart.items.find((i: any) => i.product_id === line.product_id && i.quantity === line.quantity);
+    return done(`Done: the ${line.title} is now ${variantText(now?.options ?? wanted)}. Your cart is ${total} with tax and delivery.`, { focus: line.product_id });
+  }
+
   if (has(t, /\b(cart|basket)\b/) && !has(t, /\badd\b/)) {
     const r = await run("view_cart", {});
     if (!r.carts?.length) return done("Your cart is empty.");
@@ -231,12 +297,47 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
     if (focus && Object.keys(focus.options).length) return addProduct(focus, t.replace(/^size\s+/, "size "));
   }
 
+  if (has(t, /\b(cheapest|least expensive|lowest price|most expensive|priciest)\b/) && mem.results.some((r) => r.price)) {
+    const priced = mem.results.map((r, i) => ({ r, i, cents: Math.round(Number((r.price ?? "").replace(/[^0-9.]/g, "")) * 100) })).filter((x) => x.cents > 0);
+    const most = has(t, /\b(most expensive|priciest)\b/);
+    const pick = priced.sort((a, b) => (most ? b.cents - a.cents : a.cents - b.cents))[0]!;
+    return done(`The ${most ? "most expensive" : "cheapest"} is number ${pick.i + 1}, the ${pick.r.title}, at ${pick.r.price}. Say "tell me more" or "add it".`, { focus: pick.r.id });
+  }
+
+  // "Do you have number 2 in black?", "does it come in size 10?"
+  const wants = parseRequest(t);
+  const pointsAtOne = n !== undefined || byName !== undefined || /\b(it|they|them|this|that|this one|that one)\b/.test(t);
+  if ((wants.color || wants.size || /\bin (size )?\d/.test(t)) && pointsAtOne && /^(do|does|is|are|can|have|has|got|any)\b/.test(t)) {
+    if (!chosen) return which();
+    const r = await run("get_product", { product_id: chosen.id });
+    if ("error" in r) return done(r.error);
+    const options = r.options_to_choose as Record<string, string[]>;
+    const facts = r.facts as Record<string, string>;
+    const keep = { focus: chosen.id };
+    if (wants.color) {
+      const colours = options.color;
+      if (colours) {
+        const hit = colours.find((c: string) => c.toLowerCase() === wants.color);
+        return done(hit ? `Yes, the ${r.title} comes in ${hit}. Say "add it in ${hit.toLowerCase()}".` : `No, the ${r.title} comes in ${colours.join(", ")}.`, keep);
+      }
+      const colour = facts.color ?? facts.colour;
+      if (colour) return done(colour.toLowerCase().includes(wants.color) ? `Yes, the ${r.title} is ${colour}.` : `No, the ${r.title} only comes in ${colour}.`, keep);
+      return done(`The store didn't list a colour for the ${r.title}.`, keep);
+    }
+    const size = wants.size ?? t.match(/\bin (?:size )?([0-9]+(?:\.5)?)/)?.[1];
+    if (size && options.size) {
+      const hit = options.size.find((v: string) => v.toLowerCase() === size || v.toLowerCase().startsWith(`${size} `));
+      return done(hit ? `Yes, the ${r.title} comes in size ${hit}. Say "add it in size ${size}".` : `No, the ${r.title} comes in sizes ${options.size.join(", ")}.`, keep);
+    }
+    if (size) return done(`The ${r.title} doesn't come in sizes.`, keep);
+  }
+
   // ── Questions about a product ─────────────────────────────────────────
   const asksPhoto = has(t, /\b(photo|picture|image|look like|looks like|describe)\b/);
   // A question about a product (not a new search like "black shoes size 9"):
   // it names "it"/"number 2", or starts like a question.
   const questionish = wantsSomething || /^(what|what's|whats|does|do|is|are|how|when|tell|which|can|describe|compare|more)\b/.test(t);
-  const asksFacts = questionish && has(t, /\b(made of|material|fabric|size chart|sizes|what size|which size|fit|return|returns|refund policy|deliver|delivery|arrive|shipping|price|cost|how much is|colou?rs?|weight|tell me|more about|details|about|what is it|which is better|compare|difference)\b/);
+  const asksFacts = questionish && has(t, /\b(made of|material|fabric|size chart|sizes|what size|which size|fit|return|returns|refund policy|deliver|delivery|arrive|shipping|price|cost|how much is|colou?rs?|weight|tell me|more about|details|about|what is it|which is better|compare|difference|in stock|stock|available|availability)\b/);
   if (asksPhoto || asksFacts || (n !== undefined && t.split(/\s+/).length <= 4)) {
     if (has(t, /\b(compare|which is better|difference)\b/) && mem.results.length >= 2) {
       const r = await run("compare_products", { product_ids: mem.results.slice(0, 3).map((x) => x.id) });
@@ -256,6 +357,8 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
     const facts = r.facts as Record<string, string>;
     const options = r.options_to_choose as Record<string, string[]>;
     const keep = { focus: chosen.id };
+    if (has(t, /\b(in stock|stock|available|availability)\b/))
+      return done(`${r.store} lists the ${r.title} for sale now, so you can order it. It should arrive ${r.arrives}.`, keep);
     if (has(t, /\b(made of|material|fabric)\b/)) return done(facts.material ? `The ${r.title} is made of: ${facts.material}.` : `The store didn't say what the ${r.title} is made of. I've let them know.`, keep);
     if (has(t, /\b(size chart|fit)\b/)) return done(`${r.size_chart}${facts.fit ? ` Fit: ${facts.fit}.` : ""}`, keep);
     if (has(t, /\b(sizes|what size|which size)\b/)) return done(options.size ? `The ${r.title} comes in sizes ${options.size.join(", ")}. ${r.size_chart}` : `The ${r.title} doesn't come in sizes.`, keep);
@@ -287,7 +390,7 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
   const example = sizes && !size ? sizes[Math.floor(sizes.length / 2)]!.split(" ")[0] : undefined; // a middle size, as an example
   const tip = hits.length === 1 ? `Say "tell me more", or "add it${example ? ` in size ${example}` : ""}".` : `Say "tell me about number 1", or "add number 1${example ? `, size ${example}` : ""}".`;
   return done(`I found ${hits.length}. ${list} ${tip}`, {
-    results: hits.map((h) => ({ id: h.product_id, title: h.title, options: h.options })),
+    results: hits.map((h) => ({ id: h.product_id, title: h.title, options: h.options, price: h.price })),
     focus: hits.length === 1 ? first.product_id : undefined,
     wanted: { size, color },
   });

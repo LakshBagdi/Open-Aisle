@@ -3,6 +3,7 @@
  * Then set PAYPAL_API_BASE=http://127.0.0.1:4010 in .env.
  */
 import "../../loadEnv";
+import { fileURLToPath } from "node:url";
 import { createFakePayPal } from "./fakePayPal";
 
 const port = Number(process.env.FAKE_PAYPAL_PORT ?? 4010);
@@ -14,6 +15,8 @@ const fake = createFakePayPal({
   webhookId: process.env.PAYPAL_WEBHOOK_ID || "FAKE-WEBHOOK-ID",
   webhookDelayMs: 300,
   log: true,
+  // Remembers the shopper's saved PayPal account across restarts (packages/core/.fake-paypal.json).
+  stateFile: fileURLToPath(new URL("../../../.fake-paypal.json", import.meta.url)),
 });
 
 fake.start().then((url) => {

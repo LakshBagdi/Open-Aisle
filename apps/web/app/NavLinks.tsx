@@ -9,7 +9,9 @@ const LINKS = [
 ];
 
 /** aria-current tells screen readers which page you're on. */
-export function NavLinks() {
+const HI: Record<string, string> = { "/": "ख़रीदारी", "/orders": "मेरे ऑर्डर", "/settings": "सेटिंग्स", "/merchant": "दुकानों के लिए" };
+
+export function NavLinks({ lang = "en" }: { lang?: "en" | "hi" }) {
   const path = usePathname();
   return (
     <ul>
@@ -18,7 +20,7 @@ export function NavLinks() {
         return (
           <li key={l.href}>
             <a href={l.href} aria-current={current ? "page" : undefined}>
-              {l.label}
+              {lang === "hi" ? (HI[l.href] ?? l.label) : l.label}
             </a>
           </li>
         );
