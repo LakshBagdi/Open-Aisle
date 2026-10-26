@@ -32,13 +32,104 @@ type Hit = { product_id: string; title: string; price: string; store: string; ar
 type Result = { id: string; title: string; options: Record<string, string[]>; price?: string };
 export type BasicMemory = { basic: { results: Result[]; focus?: string; wanted?: { size?: string; color?: string } } };
 
-const ORDINALS: Record<string, number> = { first: 1, one: 1, "1": 1, second: 2, two: 2, "2": 2, third: 3, three: 3, "3": 3, fourth: 4, "4": 4, fifth: 5, "5": 5, last: -1 };
+const ORDINALS: Record<string, number> = {
+  first: 1, "1st": 1, one: 1, won: 1, "1": 1,
+  second: 2, "2nd": 2, two: 2, to: 2, too: 2, "2": 2,
+  third: 3, "3rd": 3, three: 3, tree: 3, "3": 3,
+  fourth: 4, "4th": 4, four: 4, for: 4, "4": 4,
+  fifth: 5, "5th": 5, five: 5, "5": 5,
+  last: -1,
+};
 
-/** "number 2", "the second one", "#2" → 2 (1-based). */
+/**
+ * "number 2", "the second one", "#2", "the 2nd one" → 2 (1-based). Speech
+ * recognition often writes "number two" as "number to" or "number too", so
+ * after "number" those count too.
+ */
 export function pickNumber(text: string): number | undefined {
-  const m = text.match(/\b(?:number|no\.?|#|option|item)\s*(\d)\b|\b(first|second|third|fourth|fifth|last)\b|\bthe (one|two|three)\b|^\s*(\d)\s*$/i);
+  const m = text.match(/\b(?:number|no\.?|#|option|item)\s*(\d|one|won|two|to|too|three|tree|four|for|five)\b|\b(first|second|third|fourth|fifth|last|1st|2nd|3rd|4th|5th)\b|\bthe (one|two|three)\b|^\s*(\d)\s*$/i);
   const word = (m?.[1] ?? m?.[2] ?? m?.[3] ?? m?.[4])?.toLowerCase();
   return word ? ORDINALS[word] : undefined;
+}
+
+/**
+ * Words speech recognition commonly gets wrong for short shopping commands
+ * (whole phrases only, so normal sentences are untouched): "by it" → "buy it",
+ * "at it" → "add it", "my card" → "my cart".
+ */
+/**
+ * Simple mode understands English requests. Hindi speech arrives in Devanagari
+ * (often with English words written in it, like "रनिंग शूज़"), so common
+ * shopping words are turned into English first. The AI, when it's on, reads
+ * Hindi directly.
+ */
+const HINDI: [RegExp, string][] = [
+  [/(\d+)\s*(?:डॉलर|डालर|रुपये|रुपए)?\s*से कम/g, "under $1 dollars"],
+  [/मेरा ऑर्डर कहाँ है|ऑर्डर कहाँ है|मेरा ऑर्डर कहां है/g, "where is my order"],
+  [/कितना (?:ख़र्च|खर्च|खर्चा) (?:किया|हुआ|हो गया)?/g, "how much have i spent"],
+  [/(?:मेरे |मेरी )?(?:कार्ट|टोकरी) में क्या है/g, "what's in my cart"],
+  [/के बारे में (?:बताओ|बताइए|बताइये|बताएं|बताएँ)|(?:बताओ|बताइए|बताइये)/g, " tell me about "],
+  [/किस चीज़ से बना है|किससे बना है|किस से बना है/g, " what is it made of "],
+  [/(?:जोड़|जोड)(?:ो|ें| दो| दीजिए| दें)|ऐड (?:करो|कर दो|करें)|डाल दो|डालो/g, " add "],
+  [/(?:ख़रीद|खरीद)(?:ो|ें| लो| दो| लीजिए|ना है)/g, " buy it "],
+  [/(?:हटा|निकाल)(?:ो| दो|ें| दीजिए)/g, " remove "],
+  [/(?:साइज़|साइज|साईज)/g, " size "],
+  [/नंबर/g, " number "],
+  [/(?<=number\s+)एक/g, " 1 "],
+  [/(?<=(?:number|size)\s+)दो/g, " 2 "],
+  [/(?<=(?:number|size)\s+)तीन/g, " 3 "],
+  [/(?<=(?:number|size)\s+)चार/g, " 4 "],
+  [/(?<=(?:number|size)\s+)(?:पाँच|पांच)/g, " 5 "],
+  [/इसे|इसको|यह वाला|ये वाला|वो वाला|उसे|यह|ये/g, " it "],
+  [/रनिंग/g, " running "],
+  [/(?:शूज़|शूज|जूते|जूता|जूतों)/g, " shoes "],
+  [/(?:मोज़े|मोजे)/g, " socks "],
+  [/(?:टी-शर्ट|टीशर्ट|टी शर्ट)/g, " t-shirt "],
+  [/(?:किचन स्केल|रसोई (?:का )?तराज़ू|रसोई (?:का )?तराजू|तराज़ू|तराजू)/g, " kitchen scale "],
+  [/(?:बोलने वाला|बोलने वाली|बोलने वाले|बोलता हुआ)/g, " talking "],
+  [/(?:घड़ी|घडी)/g, " clock "],
+  [/(?:मग|कप)/g, " mug "],
+  [/कंबल/g, " blanket "],
+  [/चाकू/g, " knife "],
+  [/(?:पैन|कड़ाही|कढ़ाई)/g, " pan "],
+  [/(?:काले|काला|काली)/g, " black "],
+  [/(?:सफ़ेद|सफेद)/g, " white "],
+  [/(?:नीले|नीला|नीली)/g, " blue "],
+  [/लाल/g, " red "],
+  [/(?:हरे|हरा|हरी)/g, " green "],
+  [/(?:डॉलर|डालर)/g, " dollars "],
+  [/(?:में|का|की|के|है|चाहिए|दिखाओ|दिखाइए|मुझे|कोई|कुछ|वाला|वाली|वाले|और)/g, " "],
+];
+// The dot under some letters (ड़, ज़) can be written two ways; compare without it.
+const plain = (x: string) => x.normalize("NFD").replace(/\u093C/g, "");
+const HINDI_PLAIN = HINDI.map(([re, en]) => [new RegExp(plain(re.source), re.flags), en] as const);
+
+export function fromHindi(text: string): string {
+  if (!/[\u0900-\u097F]/.test(text)) return text;
+  let t = plain(text);
+  for (const [re, en] of HINDI_PLAIN) t = t.replace(re, en);
+  return t.replace(/[\u0900-\u097F]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function heardRight(t: string): string {
+  return t
+    .replace(/^(?:by|bye) (it|them|this|that|this one|that one|now)$/, "buy $1")
+    .replace(/^(?:at|ad|and) (it|them|this|that|this one|that one)$/, "add $1")
+    .replace(/^(?:at|ad) (it|them|number|the)\b/, "add $1")
+    .replace(/\b(in|to|from|empty|clear) (my|the) card\b/, "$1 $2 cart");
+}
+
+const SIZE_WORDS: Record<string, string> = {
+  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10", eleven: "11", twelve: "12", thirteen: "13",
+  small: "s", medium: "m", large: "l", "extra small": "xs", "extra large": "xl",
+};
+/** "size nine and a half" → "9.5"; "in a medium" → "m". */
+function spokenSize(t: string): string | undefined {
+  const m = t.match(/\bsize\s+(?:(?:to|of|is|in)\s+)?(\d+(?:\.\d)?|extra small|extra large|[a-z]+)(\s+and a half)?\b/) ?? t.match(/\bin (?:a |an )?(extra small|extra large|small|medium|large)\b/);
+  if (!m) return undefined;
+  const raw = m[1]!;
+  const base = SIZE_WORDS[raw] ?? raw;
+  return m[2] && /^\d+$/.test(base) ? `${base}.5` : base;
 }
 
 const COUNT_WORDS: Record<string, number> = { a: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, pair: 2 };
@@ -59,12 +150,14 @@ const PRICE = /(?:under|below|less than|max|maximum|up to|within|budget(?: of)?|
 
 /** Pull "size 9", "under $60", a colour, and the words to search for. */
 export function parseRequest(text: string) {
-  const t = text.toLowerCase().replace(/[?!.,]/g, " ");
-  const size = t.match(/\bsize\s+(?:(?:to|of|is|in)\s+)?([a-z0-9.]+)/i)?.[1];
+  // Keep the dot in "9.5"; drop other punctuation.
+  const t = text.toLowerCase().replace(/(?<!\d)\.|\.(?!\d)|[?!,]/g, " ");
+  const size = spokenSize(t);
   const price = t.match(PRICE)?.[1];
   const color = COLORS.find((c) => new RegExp(`\\b${c}\\b`).test(t));
   const query = t
-    .replace(/\bsize\s+(?:(?:to|of|is|in)\s+)?[a-z0-9.]+/g, " ")
+    .replace(/\bsize\s+(?:(?:to|of|is|in)\s+)?(?:\d+(?:\.\d)?|extra small|extra large|[a-z]+)(?:\s+and a half)?/g, " ")
+    .replace(/\bin (?:a |an )?(?:extra small|extra large|small|medium|large)\b/g, " ")
     .replace(PRICE, " ")
     .replace(/\b(i need|i want|i'?m looking for|looking for|find me|find|show me|search for|search|can you|could you|please|do you have|have you got|is there|are there|some|something|anything|a pair of|pair of|a|an|the|for me|get me|i'?d like)\b/g, " ")
     .replace(/\s+/g, " ")
@@ -88,7 +181,7 @@ async function lastMemory(conversationId: string): Promise<BasicMemory["basic"] 
 
 const HELP = {
   en: "I'm in simple mode, so short requests work best. Try: running shoes under 60. Tell me about number 2. Add it in size 9. What's in my cart. Buy it. Cancel that. Where's my order.",
-  hi: "मैं अभी सरल मोड में हूँ, इसलिए छोटे वाक्य बोलिए। जैसे: running shoes under 60. Tell me about number 2. Add it in size 9. Buy it. रद्द करो।",
+  hi: "मैं अभी सरल मोड में हूँ, इसलिए छोटे वाक्य बोलिए। जैसे: रनिंग शूज़ 60 डॉलर से कम। नंबर एक के बारे में बताओ। साइज़ 9 में जोड़ो। कार्ट में क्या है। खरीदो। रद्द करो।",
 };
 
 type Ctx = { userId: string; lang: Lang; conversationId: string; text: string; events: AgentEvent[] };
@@ -108,7 +201,10 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
   // Curly quotes around the things to say: “add it” reads better on screen and sounds the same.
   const done = (reply: string, patch?: Partial<BasicMemory["basic"]>) => ({ reply: reply.replace(/"([^"]+)"/g, "“$1”"), memory: remember(patch), orderFacts: orderFacts.seen });
 
-  const t = ctx.text.trim().toLowerCase().replace(/[?!.]+$/g, "").replace(/’/g, "'");
+  // Greetings, thanks and "cancel" in Hindi are understood as they are; everything else goes through fromHindi.
+  const hindiCommand = /^(नमस्ते|हेलो|धन्यवाद|शुक्रिया|मदद)|रद्द|कैंसल/.test(ctx.text.trim().normalize("NFC"));
+  const said = hindiCommand ? ctx.text : fromHindi(ctx.text);
+  const t = heardRight(said.trim().toLowerCase().replace(/[?!.]+$/g, "").replace(/’/g, "'"));
   const n = pickNumber(t);
   const byNumber = n ? (n === -1 ? mem.results.at(-1) : mem.results[n - 1]) : undefined;
   // By name, as the product cards' buttons say it: "Tell me more about the Trail Runner 2", "Add the Trail Runner 2 to my cart".
@@ -131,7 +227,14 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
 
   /** Ask which product when "it" is unclear. */
   const which = () => {
-    if (n && !byNumber) return done(mem.results.length ? `I only found ${mem.results.length} just now. Say a number from 1 to ${mem.results.length}.` : "Tell me what you're looking for first, for example: running shoes under 60.");
+    if (n && !byNumber)
+      return done(
+        mem.results.length === 1
+          ? `I only found one just now: the ${mem.results[0]!.title}. Say "tell me more" or "add it".`
+          : mem.results.length
+            ? `I only found ${mem.results.length} just now. Say a number from 1 to ${mem.results.length}.`
+            : "Tell me what you're looking for first, for example: running shoes under 60.",
+      );
     if (mem.results.length === 0) return done("Tell me what you're looking for first, for example: running shoes under 60.");
     return done(`Which one? ${mem.results.map((r, i) => `Number ${i + 1} is the ${r.title}.`).join(" ")}`);
   };
@@ -378,7 +481,7 @@ export async function basicTurn(ctx: Ctx): Promise<{ reply: string; memory: Basi
   if (wantsSomething && /^(it|that|this|this one|that one)$/.test(t)) return which();
 
   // ── Otherwise: search ─────────────────────────────────────────────────
-  const { query, size, maxPrice, color } = parseRequest(ctx.text);
+  const { query, size, maxPrice, color } = parseRequest(said);
   if (!query && !maxPrice) return done(HELP[ctx.lang]);
   const r = await run("search_products", { query: query || "everything", size, color, max_price_dollars: maxPrice });
   const hits = (r.results ?? []) as Hit[];

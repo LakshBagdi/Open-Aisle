@@ -8,7 +8,8 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return fail("Request blocked.", 403);
   try {
-    const { approveUrl } = await startPayPalConnection(await currentUserId());
+    const body = (await req.json().catch(() => ({}))) as { from?: string };
+    const { approveUrl } = await startPayPalConnection(await currentUserId(), { from: body.from === "shop" ? "shop" : "settings" });
     return ok({ approveUrl });
   } catch (err) {
     return handleError(err);

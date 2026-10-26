@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { captureDueOrders, listOrders, spendingSummary } from "@open-aisle/core/orders";
 import { getAccountStatus } from "@open-aisle/core/account";
 import { formatMoney } from "@open-aisle/core/money";
-import { OrdersGrid, type OrderRow } from "@/components/OrdersGrid";
+import type { OrderRow } from "@/components/OrdersGrid";
+import { OrdersTable } from "@/components/OrdersTable";
 import { OrderActions, type ActionableOrder } from "@/components/OrderActions";
 import { currentUserId } from "@/lib/session";
 
@@ -63,12 +64,13 @@ export default async function OrdersPage() {
       </ul>
       <OrderActions orders={actionable} />
       {rows.length === 0 ? (
-        <p>No orders yet. Ask Open Aisle for something on the Shop page.</p>
+        <p>
+          No orders yet. <a href="/">Go to the Shop</a> and ask for something.
+        </p>
       ) : (
         <>
           <h2 style={{ marginTop: "2rem" }}>All orders</h2>
-          <p className="hint">Use the arrow keys to move through the table.</p>
-          <OrdersGrid rows={rows} />
+          <OrdersTable rows={rows} />
         </>
       )}
     </>

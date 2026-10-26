@@ -5,9 +5,9 @@
 import { MockLanguageModelV4 } from "ai/test";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { parseRequest, pickNumber, runTurn } from "../src/agent";
-import { pickQuantity } from "../src/agent/basic";
+import { heardRight, pickQuantity } from "../src/agent/basic";
 import { closeDb } from "../src/db";
-import { voiceCommand } from "../src/i18n";
+import { isConfirmPhrase, voiceCommand } from "../src/i18n";
 import { placeOrder } from "../src/orders";
 import { issueConfirmation } from "../src/rules";
 import { resetDb, seedWorld, startFakePayPal } from "./helpers";
@@ -37,6 +37,44 @@ describe("understanding short requests", () => {
     expect(pickNumber("the second one")).toBe(2);
     expect(pickNumber("tell me about the last one")).toBe(-1);
     expect(pickNumber("running shoes")).toBeUndefined();
+  });
+  it("copes with what speech recognition often mishears", () => {
+    expect(pickNumber("add number to")).toBe(2);
+    expect(pickNumber("tell me about number one")).toBe(1);
+    expect(pickNumber("the 2nd one")).toBe(2);
+    expect(parseRequest("size nine and a half").size).toBe("9.5");
+    expect(parseRequest("trail shoes size 9.5").size).toBe("9.5");
+    expect(parseRequest("a fleece in a medium").size).toBe("m");
+    expect(heardRight("by it")).toBe("buy it");
+    expect(heardRight("at it")).toBe("add it");
+    expect(heardRight("what's in my card")).toBe("what's in my cart");
+    expect(heardRight("stand by it")).toBe("stand by it");
+    expect(voiceCommand("say it again", "en")).toBe("repeat");
+    expect(voiceCommand("help me", "en")).toBe("help");
+    // "confirm" as recognisers often write it still confirms; a bare "yes" never pays.
+    expect(isConfirmPhrase("Confirmed.", "en")).toBe(true);
+    expect(isConfirmPhrase("conform", "en")).toBe(true);
+    expect(isConfirmPhrase("yes", "en")).toBe(false);
+    expect(isConfirmPhrase("don't confirm", "en")).toBe(false);
+  });
+  it("understands everyday Hindi in simple mode", async () => {
+    const say = async (text: string, conversationId?: string) => runTurn({ userId: world.user.id, text, conversationId });
+    const s1 = await say("रनिंग शूज़ 60 डॉलर से कम");
+    expect(s1.reply).toContain("Number 1: Trail Runner 2");
+    const c = s1.conversationId;
+    expect((await say("नंबर एक के बारे में बताओ", c)).reply).toMatch(/^Trail Runner 2 from Northwind Outfitters/);
+    expect((await say("इसे साइज़ 9 में जोड़ो", c)).reply).toContain("Added the Trail Runner 2, size 9");
+    expect((await say("मेरे कार्ट में क्या है", c)).reply).toMatch(/^In your cart/);
+    expect((await say("खरीदो", c)).events.some((e) => e.type === "readback")).toBe(true);
+    expect((await say("मेरा ऑर्डर कहाँ है", c)).reply).toBe("You don't have any orders yet.");
+  });
+  it("a misheard 'by it' still opens the read-back (nothing is paid)", async () => {
+    const r1 = await runTurn({ userId: world.user.id, text: "trail running shoes" });
+    const added = await runTurn({ userId: world.user.id, conversationId: r1.conversationId, text: "at it in size nine" });
+    expect(added.reply).toContain("Added the Trail Runner 2, size 9");
+    const r = await runTurn({ userId: world.user.id, conversationId: r1.conversationId, text: "by it" });
+    expect(r.events.some((e) => e.type === "readback")).toBe(true);
+    expect(fake.state.authorizations.size).toBe(0);
   });
   it("recognises whole-phrase voice commands only", () => {
     expect(voiceCommand("Cancel that.", "en")).toBe("cancel");
@@ -112,7 +150,7 @@ describe("falling back when the AI fails", () => {
     expect((await say("add it", c)).reply).toContain("Added the Trail Runner 2, size 9");
     expect((await say("add it", c)).reply).toMatch(/^Added another Trail Runner 2, size 9\. You now have 2 of them/);
     expect((await say("remove it", c)).reply).toContain("Removed the Trail Runner 2");
-    expect((await say("tell me about number 5", c)).reply).toMatch(/I only found 1/);
+    expect((await say("tell me about number 5", c)).reply).toMatch(/I only found one just now: the Trail Runner 2/);
     expect((await say("something under 20 dollars")).reply).toContain("Stoneware Mug, $14.99");
   });
 

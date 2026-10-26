@@ -87,7 +87,7 @@ pnpm install
 pnpm demo              # http://localhost:3000
 ```
 
-That's it. `pnpm demo` makes `.env` from `.env.example` if you don't have one, sets up the database, and starts the app together with a fake PayPal, so it works with **no keys at all**. The first time, it also fills in 2 demo stores, 15 products, the demo shopper "Asha" and some simulated shoppers, so the store pages have numbers; after that it keeps your orders (`pnpm db:seed` starts the demo over). Without an AI key the assistant runs in *simple mode*: it understands short requests ("running shoes under 60", "add number 1", "buy it", "cancel that"); add a key to `.env` for full conversation.
+That's it. `pnpm demo` makes `.env` from `.env.example` if you don't have one, sets up the database, and starts the app together with a fake PayPal, so it works with **no keys at all**. The first time, it also fills in 2 demo stores, 15 products, the demo shopper "Asha" and some simulated shoppers, so the store pages have numbers; after that it keeps your orders (`pnpm db:seed` starts the demo over). Without an AI key the assistant runs in *simple mode*: it understands short requests in English or Hindi ("running shoes under 60", "add number 1", "buy it", "cancel that", "रनिंग शूज़ 60 डॉलर से कम", "खरीदो"), and the words speech recognition often gets wrong ("by it", "number to", "size nine and a half"); add a key to `.env` for full conversation.
 
 Everything lives in one `.env` at the top of the repo. To use the real PayPal sandbox instead of the fake, put your sandbox `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` in `.env` and remove the `PAYPAL_API_BASE` line. Different database? Change `DATABASE_URL`.
 
@@ -97,7 +97,7 @@ The fake PayPal speaks the same API as the sandbox for every call Open Aisle mak
 
 **No Claude key?** Gemini and Groq both have free tiers. Set `AI_PROVIDER=google`, `GOOGLE_GENERATIVE_AI_API_KEY=...` and `AGENT_MODEL=gemini-3.8-flash` (or `AI_PROVIDER=groq`, `GROQ_API_KEY=...`). Claude is still the best fit: free-tier models are weaker at following the trust rules and have tight rate limits. If the AI fails, Open Aisle now says why (retired model, bad key, too many requests) and logs a line starting `[open-aisle] AI provider error`.
 
-Then: Settings → Connect PayPal → approve → Shop → "black running shoes, size 9, under 60 dollars" → "buy them" → Confirm → wait or say "cancel that".
+Then: on the Shop page press **Connect PayPal** (one click; you come straight back) → "black running shoes, size 9, under 60 dollars" → "buy them" → Confirm → wait or say "cancel that".
 
 **Merchant API:**
 
@@ -116,7 +116,7 @@ Full description: [`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)
 ## Tests and evals
 
 ```bash
-pnpm test    # 64 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
+pnpm test    # 67 tests: PayPal lifecycle, every way the trust layer must say no, the agent with a scripted model,
              # the Merchant API, the AG Studio ↔ Claude adapter, the OpenAPI file vs the real routes, MCP checkout
 pnpm eval    # real-model evals (needs ANTHROPIC_API_KEY): trust traps, quality, Hindi → packages/core/evals/results.md
 pnpm e2e     # 29 real-browser checks (with `pnpm demo` running; `pnpm db:seed` first for a clean run): axe on every page, first-visit choice, a full

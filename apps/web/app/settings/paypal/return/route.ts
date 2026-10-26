@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const setupTokenId = url.searchParams.get("approval_token_id");
-  const back = new URL("/settings", url.origin);
+  const back = new URL(url.searchParams.get("to") === "shop" ? "/" : "/settings", url.origin);
   if (!setupTokenId) {
     back.searchParams.set("paypal", "missing");
     return NextResponse.redirect(back, 303);

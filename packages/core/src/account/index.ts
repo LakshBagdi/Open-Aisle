@@ -48,11 +48,13 @@ export async function getAccountStatus(userId: string) {
 }
 
 /** Step 1: get PayPal's approval link. */
-export async function startPayPalConnection(userId: string) {
+export async function startPayPalConnection(userId: string, opts: { from?: "shop" | "settings" } = {}) {
   const base = env().APP_URL;
+  const shop = opts.from === "shop";
   const { setupTokenId, approveUrl } = await createSetupToken({
-    returnUrl: `${base}/settings/paypal/return`,
-    cancelUrl: `${base}/settings?paypal=cancelled`,
+    // Back to where the person started, so connecting from the Shop doesn't strand them in Settings.
+    returnUrl: `${base}/settings/paypal/return${shop ? "?to=shop" : ""}`,
+    cancelUrl: shop ? `${base}/?paypal=cancelled` : `${base}/settings?paypal=cancelled`,
     requestId: `setup-${userId}-${Date.now()}`,
   });
   await getDb().insert(paypalVault).values({ userId, setupTokenId, status: "pending" });
@@ -92,7 +94,9 @@ const ensured = new Set<string>();
 export async function ensureShopper(userId: string, displayName = "Asha") {
   if (ensured.has(userId)) return;
   const db = getDb();
-  const inserted = await db.insert(users).values({ id: userId, displayName }).onConflictDoNothing({ target: users.id }).returning({ id: users.id });
+  // A new visitor starts neutral (not "screen reader"): the first-visit question sets how they want to use it.
+  const modes = { screenReader: false, voice: false, plainWords: false, largeText: false };
+  const inserted = await db.insert(users).values({ id: userId, displayName, modes }).onConflictDoNothing({ target: users.id }).returning({ id: users.id });
   if (inserted.length > 0) {
     await setSpendingRules(userId, { perOrderCents: 15_000, monthlyCents: 40_000, allowedStoreIds: [], undoWindowSeconds: 600 });
   }

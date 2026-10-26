@@ -58,7 +58,8 @@ export function t(lang: Lang, key: StringKey, vars: Record<string, string> = {})
 
 /** Words that count as "yes, place the order" when spoken right after a read-back. */
 export const CONFIRM_WORDS: Record<Lang, string[]> = {
-  en: ["confirm", "yes confirm", "confirm order", "place the order", "place order"],
+  // Still a deliberate word, never a bare "yes"; plus what speech recognition often hears for "confirm".
+  en: ["confirm", "yes confirm", "confirm order", "confirm the order", "confirm it", "i confirm", "place the order", "place order", "place my order", "confirmed", "conform", "confirm please", "yes confirm please"],
   hi: ["पुष्टि", "पुष्टि करें", "हाँ पुष्टि", "ऑर्डर करो", "ऑर्डर कर दो"],
 };
 
@@ -86,10 +87,10 @@ const COMMANDS: Record<"cancel" | "change" | "dont_order" | "repeat" | "stop" | 
     hi: ["रद्द", "रद्द करो", "रद्द कर दो", "ऑर्डर रद्द करो", "कैंसल", "कैंसल करो"],
   },
   change: { en: ["change", "change something", "change it", "go back"], hi: ["बदलो", "बदलना है", "वापस"] },
-  dont_order: { en: ["don't order", "do not order", "no", "no thanks", "not now"], hi: ["नहीं", "ऑर्डर मत करो", "अभी नहीं"] },
-  repeat: { en: ["repeat", "say that again", "repeat that", "what did you say", "again"], hi: ["फिर से बोलो", "दोबारा", "दोबारा बोलो"] },
-  stop: { en: ["stop", "stop talking", "be quiet", "quiet"], hi: ["रुको", "चुप", "बस"] },
-  help: { en: ["help", "what can i say", "what can you do"], hi: ["मदद", "क्या बोल सकते हैं"] },
+  dont_order: { en: ["don't order", "don't order it", "do not order", "do not order it", "no", "no thanks", "not now", "don't buy it", "don't buy"], hi: ["नहीं", "ऑर्डर मत करो", "अभी नहीं"] },
+  repeat: { en: ["repeat", "say that again", "say it again", "repeat that", "repeat it", "what did you say", "again", "pardon", "sorry what", "come again", "one more time"], hi: ["फिर से बोलो", "दोबारा", "दोबारा बोलो"] },
+  stop: { en: ["stop", "stop talking", "be quiet", "quiet", "shush", "enough"], hi: ["रुको", "चुप", "बस"] },
+  help: { en: ["help", "help me", "what can i say", "what can you do", "how does this work", "i need help"], hi: ["मदद", "क्या बोल सकते हैं"] },
 };
 
 export type VoiceCommand = keyof typeof COMMANDS;

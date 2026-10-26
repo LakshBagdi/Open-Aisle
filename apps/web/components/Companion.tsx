@@ -82,7 +82,7 @@ function shortForCards(text: string) {
 let counter = 0;
 const nextId = () => `t${Date.now()}-${counter++}`;
 
-export function Companion(props: { name: string; lang: Lang; modes: Modes; paypalConnected: boolean }) {
+export function Companion(props: { name: string; lang: Lang; modes: Modes; paypalConnected: boolean; paypalNote?: "connected" | "cancelled" | "failed" }) {
   const lang = props.lang;
   const [modes, setModes] = useState<Modes>(props.modes);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -98,6 +98,7 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
   const [cart, setCart] = useState<{ itemCount: number; total: string } | null>(null);
   const [undo, setUndo] = useState<Undo | null>(null);
   const [simple, setSimple] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const talkRef = useRef<HTMLButtonElement>(null);
@@ -440,6 +441,19 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
     [updateModes, speech, T],
   );
 
+  /** One click from the Shop: PayPal's approval page, then straight back here. */
+  const connectPayPal = useCallback(async () => {
+    setConnecting(true);
+    try {
+      const d = await (await fetch("/api/paypal/connect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ from: "shop" }) })).json();
+      if (!d.ok) throw new Error(d.error);
+      window.location.assign(d.approveUrl);
+    } catch (err) {
+      setConnecting(false);
+      say(err instanceof Error && err.message ? err.message : T("paypalFailed"));
+    }
+  }, [say, T]);
+
   const newConversation = useCallback(() => {
     session(CONV_KEY, null);
     setConversationId(undefined);
@@ -486,10 +500,18 @@ export function Companion(props: { name: string; lang: Lang; modes: Modes; paypa
           </section>
         )}
 
-        {!props.paypalConnected && (
-          <p className="notice notice--warn">
-            {T("paypalMissing")} <a href="/settings#paypal">{T("paypalLink")}</a>
+        {props.paypalNote === "connected" && props.paypalConnected && (
+          <p className="notice" role="status">
+            {T("paypalConnected")}
           </p>
+        )}
+        {!props.paypalConnected && (
+          <div className="notice notice--warn notice--action">
+            <p>{props.paypalNote === "failed" ? T("paypalFailed") : T("paypalMissing")}</p>
+            <button type="button" className="btn btn--primary" onClick={() => void connectPayPal()} disabled={connecting}>
+              {connecting ? T("paypalOpening") : T("paypalConnect")}
+            </button>
+          </div>
         )}
 
         {simple && (
